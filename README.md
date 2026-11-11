@@ -84,3 +84,7 @@ The watch mirrors the phone: what is running, what is waiting, and how each task
 ## Boundaries
 
 This repository does not create Vercel/Upstash resources, deploy to those accounts, install or enable the Hermes plugin, or register a LaunchAgent automatically. APNs requires your Apple developer team and private key. The app does not remotely control agent tasks. Vercel and Upstash limits and policies can change; verify current account-specific terms and usage before deployment.
+
+## License
+
+Released under the [MIT License](LICENSE).
