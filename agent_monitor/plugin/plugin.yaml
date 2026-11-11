@@ -1,0 +1,13 @@
+name: agent_monitor
+version: 0.1.0
+description: Read-only local task status telemetry for Agent Monitor.
+author: Agent Monitor
+provides_hooks:
+  - pre_llm_call
+  - pre_tool_call
+  - post_tool_call
+  - on_human_input_request
+  - on_human_input_resolved
+  - on_session_end
+  - subagent_start
+  - subagent_stop
