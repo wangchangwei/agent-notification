@@ -32,6 +32,7 @@ A phone can be bound to several Macs, and each Mac is listed separately with its
 | Path | What it is |
 | --- | --- |
 | `agent_monitor/` | macOS probe: CLI, durable SQLite queue, read-only Hermes observer plugin |
+| `install.sh` | One-command macOS installer, published as an asset of every release |
 | `agent_monitor/bridge.py` | FastAPI API for Vercel Functions plus an Upstash Redis REST adapter |
 | `ios/AgentMonitor.xcodeproj` | SwiftUI iPhone app with in-app QR pairing and APNs, embedding the watchOS app |
 | `tests/` | API, plugin, queue, CLI and uninstall checks that need no network |
@@ -85,13 +86,14 @@ Vercel's Hobby plan is limited to personal, non-commercial use, and Vercel or Up
 
 ## Set up each Mac
 
+One command installs the probe into its own virtual environment under Application Support, verifies the wheel against the release checksums, links `agent-monitor` into `~/.local/bin` and registers this Mac:
+
 ```sh
-python3 -m venv "$HOME/Library/Application Support/Agent Monitor/.venv"
-"$HOME/Library/Application Support/Agent Monitor/.venv/bin/pip" install -e '/absolute/path/to/agent-notification[qrcode]'
-"$HOME/Library/Application Support/Agent Monitor/.venv/bin/agent-monitor" setup --url https://your-project.vercel.app
+curl -fsSL https://github.com/wangchangwei/agent-notification/releases/latest/download/install.sh \
+  | sh -s -- --url https://your-project.vercel.app
 ```
 
-Replace the example path with this repository's absolute path. For a second Mac, pass `--owner-id` with the owner ID printed by the first Mac's setup. Then install and enable the observer plugin for the active Hermes profile, and start the probe:
+`setup` prompts for the bootstrap token without echoing it and stores the device credential in the macOS Keychain. Running the same command again upgrades in place and leaves an existing registration alone; add `--force` to reinstall anyway. `--owner-id ID` puts a second Mac under the same owner, `--plugin` also installs and enables the observer plugin, and `--help` lists every flag. Then install and enable the plugin for the active Hermes profile, if you did not pass `--plugin`, and start the probe:
 
 ```sh
 agent-monitor install-plugin
@@ -99,6 +101,10 @@ hermes plugins enable agent_monitor
 agent-monitor pair
 agent-monitor run
 ```
+
+If `~/.local/bin` is not on your `PATH`, the installer says so; either add it or call the binary at `"$HOME/Library/Application Support/Agent Monitor/.venv/bin/agent-monitor"`.
+
+Installing from a downloaded wheel instead of the release script is also supported: create a virtual environment, `pip install './agent_notification-0.1.1-py3-none-any.whl[qrcode]'` into it, and call that environment's `agent-monitor`.
 
 Restart the Hermes desktop app (or run `hermes gateway restart`) once after enabling. Tool events flow immediately, but the turn-level events — turn started, waiting for input, turn finished — are rewired only when the gateway restarts. Commands run through the `hermes` CLI pick the plugin up without a restart.
 
@@ -139,7 +145,7 @@ The watch mirrors the phone read-only: what is running, what is waiting, and how
 
 ## Release notes
 
-Release notes are written in English and kept under `docs/release-notes/`; the same file is used as the body of the matching GitHub release. See `docs/release-notes/v0.1.0.md`.
+Release notes are written in English and kept under `docs/release-notes/`; the same file is used as the body of the matching GitHub release. See `docs/release-notes/v0.1.1.md`.
 
 ## Boundaries
 

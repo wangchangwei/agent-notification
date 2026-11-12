@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -582,6 +584,11 @@ class CliTests(unittest.TestCase):
         calls: list[tuple[str, str]] = []
         self.cli._request = lambda base, path, **kwargs: calls.append((base, path)) or {}
         self.cli._keychain_get = lambda account: "device-token"
+        real_run = self.cli.subprocess.run
+        real_which = self.cli.shutil.which
+        # `cli` holds the modules themselves, so these patches are global: restore them.
+        self.addCleanup(setattr, self.cli.subprocess, "run", real_run)
+        self.addCleanup(setattr, self.cli.shutil, "which", real_which)
         self.cli.subprocess.run = lambda *args, **kwargs: types.SimpleNamespace(returncode=0, stdout="", stderr="")
         self.cli.shutil.which = lambda name: None
         self.addCleanup(setattr, self.cli, "_request", self.cli._request)
@@ -593,6 +600,36 @@ class CliTests(unittest.TestCase):
         self.assertEqual([path.name for path in plugin_dir.iterdir()], ["unrelated-notes.txt"])
         self.assertFalse((plugin_dir / "plugin.yaml").exists())
         self.assertFalse(launch.exists())
+
+
+class InstallerScriptTests(unittest.TestCase):
+    """The one-command installer is published with a release, so it must match that release."""
+
+    def setUp(self) -> None:
+        self.root = Path(__file__).resolve().parents[1]
+        self.script = self.root / "install.sh"
+
+    def test_pinned_version_matches_the_package_version(self) -> None:
+        pinned = re.search(r'^VERSION="([^"]+)"', self.script.read_text(encoding="utf-8"), re.MULTILINE)
+        packaged = re.search(r'^version = "([^"]+)"', (self.root / "pyproject.toml").read_text(encoding="utf-8"), re.MULTILINE)
+        self.assertIsNotNone(pinned, "install.sh must pin VERSION")
+        self.assertIsNotNone(packaged, "pyproject.toml must declare a version")
+        assert pinned and packaged
+        self.assertEqual(
+            pinned.group(1), packaged.group(1),
+            "bump VERSION in install.sh whenever the package version changes",
+        )
+
+    def test_script_is_posix_sh_and_refuses_unknown_flags(self) -> None:
+        syntax = subprocess.run(["/bin/sh", "-n", str(self.script)], capture_output=True, text=True)
+        self.assertEqual(syntax.returncode, 0, syntax.stderr)
+        helped = subprocess.run(["/bin/sh", str(self.script), "--help"], capture_output=True, text=True)
+        self.assertEqual(helped.returncode, 0, helped.stderr)
+        self.assertIn("--url", helped.stdout)
+        self.assertIn("--wheel", helped.stdout)
+        refused = subprocess.run(["/bin/sh", str(self.script), "--not-a-flag"], capture_output=True, text=True)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("unknown option", refused.stderr)
 
 
 if __name__ == "__main__":

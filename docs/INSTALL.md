@@ -1,42 +1,64 @@
-# Agent Monitor macOS probe v0.1.0
+# Agent Monitor macOS probe v0.1.1
 
 Requirements: macOS, Python 3.11 or newer, Hermes Agent, and your own Agent Monitor HTTPS bridge. This release ships the Python probe, not a standalone macOS application.
 
-## Install
+## Install with one command
 
-Cloning the repository is optional. In a terminal:
+In a terminal:
 
 ```sh
-python3 --version
-python3 -m venv "$HOME/Library/Application Support/Agent Monitor/.venv"
-"$HOME/Library/Application Support/Agent Monitor/.venv/bin/python" -m pip install 'agent-notification[qrcode] @ https://github.com/wangchangwei/agent-notification/releases/download/v0.1.0/agent_notification-0.1.0-py3-none-any.whl'
+curl -fsSL https://github.com/wangchangwei/agent-notification/releases/latest/download/install.sh \
+  | sh -s -- --url https://your-project.vercel.app
 ```
 
-If you already downloaded the wheel, install the local file with that environment's pip instead:
+The script checks for Python 3.11 or newer, creates the virtual environment at `$HOME/Library/Application Support/Agent Monitor/.venv`, installs `agent-notification[qrcode]` into it, verifies the wheel against `SHA256SUMS`, links `agent-monitor` into `~/.local/bin`, and then registers this Mac with your bridge. The bootstrap token is prompted for without echoing it and the device credential is stored in the macOS Keychain.
+
+Flags:
+
+| Flag | Effect |
+| --- | --- |
+| `--url URL` | Register this Mac during the install |
+| `--owner-id ID` | Add a second Mac to the owner ID printed by the first setup |
+| `--brand NAME` | Agent brand shown on the phone: `hermes` (default), `codex`, `pi` |
+| `--plugin` | Also install and enable the read-only Hermes observer plugin |
+| `--service` | Also write the opt-in login service (not loaded) |
+| `--version V` | Install a different release |
+| `--wheel PATH` | Install a downloaded wheel instead of fetching one |
+| `--venv PATH` | Use a different virtual environment |
+| `--force` | Reinstall even when the same version is present |
+
+Re-running the command upgrades in place. It never overwrites an existing registration: remove `$HOME/Library/Application Support/Agent Monitor/config.json`, or run `agent-monitor setup` again, to register the Mac anew.
+
+## Finish the setup
 
 ```sh
-"$HOME/Library/Application Support/Agent Monitor/.venv/bin/python" -m pip install './agent_notification-0.1.0-py3-none-any.whl[qrcode]'
-```
-
-## Configure and start
-
-Replace the example bridge URL. `setup` prompts for the bootstrap token without echoing it, and stores the device credential in the macOS Keychain.
-
-```sh
-. "$HOME/Library/Application Support/Agent Monitor/.venv/bin/activate"
-agent-monitor setup --url https://your-project.vercel.app
 agent-monitor install-plugin
 hermes plugins enable agent_monitor
 agent-monitor pair
 agent-monitor run
 ```
 
+Skip the first two lines if you installed with `--plugin`. If `~/.local/bin` is not on your `PATH`, call `"$HOME/Library/Application Support/Agent Monitor/.venv/bin/agent-monitor"` instead.
+
 Scan the short-lived pairing QR in the iPhone app. After enabling the plugin, restart the Hermes desktop app — or run `hermes gateway restart` — so turn-start and turn-end events are wired up. `run` syncs in the foreground; stop it with Ctrl-C.
 
 For a second Mac under the same owner, pass the owner ID printed by the first setup:
 
 ```sh
-agent-monitor setup --url https://your-project.vercel.app --owner-id YOUR_OWNER_ID
+curl -fsSL https://github.com/wangchangwei/agent-notification/releases/latest/download/install.sh \
+  | sh -s -- --url https://your-project.vercel.app --owner-id YOUR_OWNER_ID
+```
+
+## Install from the wheel instead
+
+Cloning the repository is optional. If you prefer to control each step, or the machine has no network access to the release script:
+
+```sh
+python3 --version
+python3 -m venv "$HOME/Library/Application Support/Agent Monitor/.venv"
+"$HOME/Library/Application Support/Agent Monitor/.venv/bin/python" -m pip install 'agent_notification-0.1.1-py3-none-any.whl[qrcode]'
+. "$HOME/Library/Application Support/Agent Monitor/.venv/bin/activate"
+agent-monitor setup --url https://your-project.vercel.app
 ```
 
 ## Optional commands
@@ -61,10 +83,10 @@ After confirmation this removes the probe package, the plugin, the default local
 
 ## Verify the download
 
-Download `SHA256SUMS` from this release and, in the same directory, run:
+Download `SHA256SUMS` from this release and, in the same directory as the other assets, run:
 
 ```sh
 shasum -a 256 -c SHA256SUMS
 ```
 
-The wheel, the source archive and this file must all be present for the check to pass. Full project documentation: https://github.com/wangchangwei/agent-notification
+The wheel, the source archive, `INSTALL.md` and `install.sh` must all be present for the check to pass; the installer performs the wheel check itself. Full project documentation: https://github.com/wangchangwei/agent-notification
