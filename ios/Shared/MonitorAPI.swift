@@ -6,11 +6,11 @@ enum MonitorAPIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .badURL: "服务地址无效。"
-        case .response: "服务返回无效响应。"
-        case .unauthorized: "凭证已撤销，请重新配对。"
-        case .expired: "配对码已过期或已使用，请重新生成。"
-        case .server(let status): "服务请求失败（\(status)）。"
+        case .badURL: "That bridge URL is not valid."
+        case .response: "The bridge returned an unreadable response."
+        case .unauthorized: "This phone was revoked. Pair again."
+        case .expired: "The pairing code expired or was already used."
+        case .server(let status): "The bridge rejected the request (\(status))."
         }
     }
 }

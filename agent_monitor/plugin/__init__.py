@@ -87,9 +87,9 @@ def _emit(*, session_id: Any, turn_id: Any, event_type: str, status: str,
     if name and not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", name):
         name = "tool"
     summaries = {
-        "started": "执行开始", "tool_started": "调用工具", "tool_finished": "工具执行完毕",
-        "waiting": "需要人工处理", "resumed": "继续执行", "completed": "本轮执行结束",
-        "failed": "执行失败", "interrupted": "执行中断", "incomplete": "未完整结束",
+        "started": "Turn started", "tool_started": "Tool call", "tool_finished": "Tool finished",
+        "waiting": "Waiting for input", "resumed": "Resumed", "completed": "Turn finished",
+        "failed": "Failed", "interrupted": "Interrupted", "incomplete": "Did not finish",
     }
     _duration: int | None = None
     try:

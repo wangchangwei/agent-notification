@@ -35,7 +35,6 @@ A phone can be bound to several Macs, and each Mac is listed separately with its
 | `agent_monitor/bridge.py` | FastAPI API for Vercel Functions plus an Upstash Redis REST adapter |
 | `ios/AgentMonitor.xcodeproj` | SwiftUI iPhone app with in-app QR pairing and APNs, embedding the watchOS app |
 | `tests/` | API, plugin, queue, CLI and uninstall checks that need no network |
-| `PLAN.md` | product scope, decisions and acceptance criteria |
 | `docs/release-notes/` | release notes for published versions |
 
 ## Screenshots
@@ -43,8 +42,6 @@ A phone can be bound to several Macs, and each Mac is listed separately with its
 | Pairing | Dashboard | Home screen | Watch icon |
 | --- | --- | --- | --- |
 | ![Pairing](docs/screenshots/pairing.png) | ![Dashboard](docs/screenshots/dashboard.png) | ![Home screen](docs/screenshots/home-screen.png) | ![Watch icon](docs/screenshots/watch-icon.png) |
-
-The interface ships in Chinese today; the states it shows are fixed strings, not raw agent output.
 
 ## Local development
 

@@ -170,20 +170,20 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(accepted, {"accepted": 1})
         snapshot = self.client.get("/v1/snapshot", headers=phone).json()
         self.assertEqual(len(snapshot["events"]), 1)
-        self.assertEqual(snapshot["events"][0]["summary"], "本轮执行结束")
+        self.assertEqual(snapshot["events"][0]["summary"], "Turn finished")
         self.assertNotIn("PRIVATE PROMPT", json.dumps(snapshot))
         self.assertTrue(snapshot["devices"][0]["online"])
 
     def test_title_is_scrubbed_again_by_the_bridge(self) -> None:
         setup, mac, phone = self._pair()
         self.client.post("/v1/heartbeat", headers=mac, json={})
-        hostile = self._event(setup, title="把登录页改紧凑 https://x.test/a /Users/luyan/x.py")
+        hostile = self._event(setup, title="Fix login https://x.test/a /Users/luyan/x.py")
         self.assertEqual(self.client.post("/v1/events", headers=mac, json={"events": [hostile]}).status_code, 200)
         stored = self.client.get("/v1/snapshot", headers=phone).json()["events"][0]
-        self.assertEqual(stored["title"], "把登录页改紧凑")
+        self.assertEqual(stored["title"], "Fix login")
         self.assertNotIn("x.test", json.dumps(stored))
         self.assertNotIn("/Users", json.dumps(stored))
-        long_event = self._event(setup, title="把整个 iOS 页面里的紧凑布局重新整理一遍并加上状态显示功能")
+        long_event = self._event(setup, title="Reorganise the dense layout across every iOS screen and add a status display")
         self.client.post("/v1/events", headers=mac, json={"events": [long_event]})
         capped = [item for item in self.client.get("/v1/snapshot", headers=phone).json()["events"]
                   if item["event_id"] == long_event["event_id"]][0]["title"]
@@ -290,11 +290,11 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(snapshot["devices"][0]["device_name"], "Mac")
 
         renamed = self.client.put(
-            "/v1/devices/" + setup["device_id"], headers=phone, json={"device_name": "  工作室的 MacBook  "}
+            "/v1/devices/" + setup["device_id"], headers=phone, json={"device_name": "  Studio MacBook  "}
         )
         self.assertEqual(renamed.status_code, 200, renamed.text)
-        self.assertEqual(renamed.json()["device_name"], "工作室的 MacBook")
-        self.assertEqual(self.client.get("/v1/snapshot", headers=phone).json()["devices"][0]["device_name"], "工作室的 MacBook")
+        self.assertEqual(renamed.json()["device_name"], "Studio MacBook")
+        self.assertEqual(self.client.get("/v1/snapshot", headers=phone).json()["devices"][0]["device_name"], "Studio MacBook")
 
         # The Mac's own credential may not rename devices, and control characters are scrubbed.
         self.assertEqual(
@@ -339,9 +339,9 @@ class ObserverPluginTests(unittest.TestCase):
     def test_turn_lifecycle_and_privacy(self) -> None:
         hooks = self._register()
         message = (
-            "优化登录页的分支状态\n"
-            "参考 https://example.com/secret?token=abc123 和 /Users/luyan/.ssh/id_rsa\n"
-            "还要跑 `sudo rm -rf /tmp/x` 以及 token 0123456789abcdef0123456789abcdef\n"
+            "Polish login states\n"
+            "see https://example.com/secret?token=abc123 and /Users/luyan/.ssh/id_rsa\n"
+            "also run `sudo rm -rf /tmp/x` with token 0123456789abcdef0123456789abcdef\n"
         )
         hooks["pre_llm_call"](session_id="session-private", turn_id="turn-1", user_message=message)
         hooks["pre_tool_call"](session_id="session-private", turn_id="turn-1", tool_name="terminal", tool_input={"command": "cat ~/.ssh/id_rsa"})
@@ -359,17 +359,17 @@ class ObserverPluginTests(unittest.TestCase):
         for secret in ("example.com", "id_rsa", "sudo rm", "0123456789abcdef", "SECRET OUTPUT", "Approve sudo", "session-private", "turn-1"):
             self.assertNotIn(secret, serialized)
         # Only the scrubbed first line travels; every other line of the request is dropped.
-        self.assertEqual({item["title"] for item in items}, {"优化登录页的分支状态"})
+        self.assertEqual({item["title"] for item in items}, {"Polish login states"})
         self.assertEqual({item["device_id"] for item in items}, {"11111111-1111-4111-8111-111111111111"})
-        self.assertEqual(chronological[-1]["summary"], "本轮执行结束")
+        self.assertEqual(chronological[-1]["summary"], "Turn finished")
 
     def test_title_scrubbing_edge_cases(self) -> None:
         self.assertIsNone(self.plugin.clean_title(""))
         self.assertIsNone(self.plugin.clean_title("   \n  "))
         self.assertIsNone(self.plugin.clean_title("```\nrm -rf /\n```"))
-        self.assertEqual(self.plugin.clean_title("## 修复 登录 bug\n第二行"), "修复 登录 bug")
-        self.assertEqual(self.plugin.clean_title("1. 给用户列表加筛选"), "给用户列表加筛选")
-        long_title = self.plugin.clean_title("把 iOS 页面里的紧凑布局重新整理一遍并加上状态显示功能")
+        self.assertEqual(self.plugin.clean_title("## Fix the login bug\nsecond line"), "Fix the login bug")
+        self.assertEqual(self.plugin.clean_title("1. Add list filters"), "Add list filters")
+        long_title = self.plugin.clean_title("Reorganise the dense layout on every iOS screen and add status")
         self.assertIsNotNone(long_title)
         self.assertLessEqual(len(long_title), self.plugin.TITLE_MAX)
         self.assertTrue(long_title.endswith("…"))
@@ -380,22 +380,22 @@ class ObserverPluginTests(unittest.TestCase):
         config = json.loads(Path(os.environ["AGENT_MONITOR_CONFIG"]).read_text())
         config["send_titles"] = False
         Path(os.environ["AGENT_MONITOR_CONFIG"]).write_text(json.dumps(config))
-        self.plugin._on_pre_llm(session_id="s", turn_id="t", user_message="这个标题不该上传")
+        self.plugin._on_pre_llm(session_id="s", turn_id="t", user_message="this title must not be uploaded")
         self.assertIsNone(self.queue.pending(50)[0]["title"])
 
     def test_brand_defaults_to_hermes_and_follows_the_config(self) -> None:
         self._register()
-        self.plugin._on_pre_llm(session_id="s", turn_id="t", user_message="检查构建")
+        self.plugin._on_pre_llm(session_id="s", turn_id="t", user_message="check the build")
         self.assertEqual(self.queue.pending(50)[0]["brand"], "hermes")
         config = json.loads(Path(os.environ["AGENT_MONITOR_CONFIG"]).read_text())
         config["brand"] = "codex"
         Path(os.environ["AGENT_MONITOR_CONFIG"]).write_text(json.dumps(config))
-        self.plugin._on_pre_llm(session_id="s", turn_id="t2", user_message="检查构建")
+        self.plugin._on_pre_llm(session_id="s", turn_id="t2", user_message="check the build")
         brands = {item["brand"] for item in self.queue.pending(50)}
         self.assertEqual(brands, {"hermes", "codex"})
         config["brand"] = "Not A Slug!"
         Path(os.environ["AGENT_MONITOR_CONFIG"]).write_text(json.dumps(config))
-        self.plugin._on_pre_llm(session_id="s", turn_id="t3", user_message="检查构建")
+        self.plugin._on_pre_llm(session_id="s", turn_id="t3", user_message="check the build")
         fresh = max(self.queue.pending(50), key=lambda item: item["occurred_at"])
         self.assertEqual(fresh["brand"], "hermes")
 
@@ -406,7 +406,7 @@ class ObserverPluginTests(unittest.TestCase):
         final = self.queue.pending(50)[0]
         self.assertEqual(final["event_type"], "incomplete")
         self.assertEqual(final["status"], "interrupted")
-        self.assertEqual(final["summary"], "未完整结束")
+        self.assertEqual(final["summary"], "Did not finish")
 
     def test_failure_and_interruption_are_distinguished(self) -> None:
         hooks = self._register()
@@ -452,7 +452,7 @@ class ObserverPluginTests(unittest.TestCase):
         from agent_monitor import queue as shared_queue
         old = os.environ["AGENT_MONITOR_DATA_DIR"]
         shared_queue.enqueue(task_id="t1", parent_task_id=None, device_id="99999999-9999-4999-8999-999999999999",
-                             event_type="started", status="running", summary="执行开始")
+                             event_type="started", status="running", summary="Turn started")
         own = shared_queue.pending(50, device_id="11111111-1111-4111-8111-111111111111")
         self.assertTrue(own)
         self.assertTrue(all(item["device_id"] == "11111111-1111-4111-8111-111111111111" for item in own))

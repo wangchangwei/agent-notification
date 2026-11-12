@@ -54,14 +54,14 @@ struct WatchRoot: View {
                 Image(systemName: "iphone.and.arrow.forward")
                     .font(.title3)
                     .foregroundStyle(.secondary)
-                Text("先在 iPhone 上完成绑定")
+                Text("Pair on your iPhone first")
                     .font(.headline)
                     .multilineTextAlignment(.center)
-                Text("打开 iPhone 上的 Agent Monitor，配对后手表会自动收到凭证。")
+                Text("Open Agent Monitor on the iPhone; the watch receives its credentials after pairing.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                Button("从 iPhone 同步") { store.requestFromPhone() }
+                Button("Sync from iPhone") { store.requestFromPhone() }
                     .buttonStyle(.bordered)
             }
             .padding(.horizontal, 4)
@@ -79,7 +79,7 @@ struct WatchRoot: View {
                     summary(running: running, waiting: waiting, now: now)
                         .listRowBackground(Color.clear)
                     if tasks.isEmpty {
-                        Text(store.syncError ?? "还没有任务记录。")
+                        Text(store.syncError ?? "No tasks yet.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -101,7 +101,7 @@ struct WatchRoot: View {
                 Circle()
                     .fill(store.snapshotIsCurrent(at: now) ? Color.green : Color.orange)
                     .frame(width: 6, height: 6)
-                Text(store.snapshotIsCurrent(at: now) ? "同步正常" : "显示上次记录")
+                Text(store.snapshotIsCurrent(at: now) ? "Synced" : "Showing last snapshot")
                     .font(.footnote.weight(.medium))
                 Spacer(minLength: 4)
                 if let lastSync = store.lastSync {
@@ -110,7 +110,7 @@ struct WatchRoot: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Text("\(running) 执行中 · \(waiting) 待处理")
+            Text("\(running) running · \(waiting) waiting")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
@@ -132,14 +132,14 @@ private struct WatchTaskRow: View {
                 Image(systemName: event.brandSymbol).font(.caption2).foregroundStyle(.secondary)
                 Text(event.brandLabel).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 Spacer(minLength: 4)
-                Text(stale ? "过期" : event.taskStatus.title)
+                Text(stale ? "Stale" : event.taskStatus.title)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(stale ? .secondary : event.taskStatus.tint)
             }
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(event.displayName)，\(event.brandLabel)，\(stale ? "已过期" : event.taskStatus.title)")
+        .accessibilityLabel("\(event.displayName)，\(event.brandLabel)，\(stale ? "Stale" : event.taskStatus.title)")
     }
 }
 
@@ -186,15 +186,15 @@ private struct WatchTaskDetail: View {
                             }
                         }
                     } footer: {
-                        Text("本轮结束不代表结果已验收。")
+                        Text("A finished turn does not mean the result was accepted.")
                     }
                 } else {
-                    Text("记录不可用").font(.footnote).foregroundStyle(.secondary)
+                    Text("Record unavailable").font(.footnote).foregroundStyle(.secondary)
                 }
             }
             .listStyle(.carousel)
         }
-        .navigationTitle("详情")
+        .navigationTitle("Details")
         .containerBackground(.fill.tertiary, for: .navigation)
     }
 }

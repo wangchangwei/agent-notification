@@ -65,7 +65,9 @@ class MonitorEvent(StrictModel):
     # never needs to send prose at all.
     summary: str | None = Field(default=None, max_length=96)
     # A short, scrubbed request title. Re-scrubbed below: never trust caller-supplied prose.
-    title: str | None = Field(default=None, max_length=48)
+    # Accept a generous bound and truncate in _clean_title: a single over-long title must not
+    # reject the whole batch.
+    title: str | None = Field(default=None, max_length=512)
     # Which agent produced the task (hermes, codex, pi, …). A slug, never free text.
     brand: str | None = Field(default=None, max_length=16)
 
@@ -152,20 +154,20 @@ def _clean_title(raw: str | None) -> str | None:
 
 def _safe_event(event: MonitorEvent) -> dict[str, object]:
     allowed_summaries = {
-        "started": "执行开始",
-        "tool_started": "调用工具",
-        "tool_finished": "工具执行完毕",
-        "waiting": "需要人工处理",
-        "resumed": "继续执行",
-        "completed": "本轮执行结束",
-        "failed": "执行失败",
-        "interrupted": "执行中断",
-        "incomplete": "未完整结束",
+        "started": "Turn started",
+        "tool_started": "Tool call",
+        "tool_finished": "Tool finished",
+        "waiting": "Waiting for input",
+        "resumed": "Resumed",
+        "completed": "Turn finished",
+        "failed": "Failed",
+        "interrupted": "Interrupted",
+        "incomplete": "Did not finish",
     }
     # Summary is generated from a fixed local string; never trust caller-supplied prose.
     summary = allowed_summaries[event.event_type]
     if event.event_type == "tool_started" and event.tool_name:
-        summary = f"调用工具：{event.tool_name}"
+        summary = f"Tool: {event.tool_name}"
     brand = (event.brand or "").strip().lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,15}", brand):
         brand = None

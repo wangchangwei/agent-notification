@@ -88,9 +88,9 @@ import UserNotifications
         isPairing = true
         defer { isPairing = false }
         let url = rawBridge.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard let parsed = URL(string: url), parsed.scheme == "https" || parsed.host == "localhost" || parsed.host == "127.0.0.1" else { error = "请输入有效的 HTTPS 服务地址。"; return }
+        guard let parsed = URL(string: url), parsed.scheme == "https" || parsed.host == "localhost" || parsed.host == "127.0.0.1" else { error = "Enter a valid HTTPS bridge URL."; return }
         let code = Self.code(from: rawCode)
-        guard !code.isEmpty else { error = "二维码或配对码无效。"; return }
+        guard !code.isEmpty else { error = "That QR code or pairing code is not valid."; return }
         do {
             let response: PairResponse = try await request("/v1/pair/redeem", base: url, body: PairRequest(code: code))
             guard Keychain.save(response.accessToken, account: account) else { throw MonitorError.keychain }
@@ -123,7 +123,7 @@ import UserNotifications
     func savePushToken(_ token: String) async {
         guard paired else { return }
         do { let _: Ack = try await authorized("/v1/push-token", method: "PUT", body: PushRequest(token: token)) }
-        catch { self.error = "推送令牌暂未同步。" }
+        catch { self.error = "Push token not synced yet." }
     }
 
     func revoke(_ device: MonitorDevice) async {
@@ -149,7 +149,7 @@ import UserNotifications
 
     func unpair() async {
         do { let _: Ack = try await authorized("/v1/pairing", method: "DELETE") }
-        catch { self.error = "云端解绑未确认，凭证保留在本机。"; return }
+        catch { self.error = "Unpairing was not confirmed; the credential stays on this phone."; return }
         Keychain.delete(account); defaults.removeObject(forKey: "bridgeURL"); defaults.removeObject(forKey: "ownerId")
         #if DEBUG
         defaults.removeObject(forKey: "debugPhoneToken")
@@ -272,7 +272,7 @@ private struct EmptyBody: Encodable {}
 private enum MonitorError: LocalizedError {
     case keychain, notPaired, badURL, response, unauthorized, expired, server(Int)
     var errorDescription: String? {
-        switch self { case .keychain: "无法将访问凭证安全保存到 Keychain。"; case .notPaired: "手机尚未绑定。"; case .badURL: "服务地址无效。"; case .response: "服务返回无效响应。"; case .unauthorized: "凭证已撤销，请重新配对。"; case .expired: "配对码已过期或已使用，请重新生成。"; case .server(let status): "服务请求失败（\(status)）。" }
+        switch self { case .keychain: "Could not save the credential to the Keychain."; case .notPaired: "This phone is not paired."; case .badURL: "That bridge URL is not valid."; case .response: "The bridge returned an unreadable response."; case .unauthorized: "This phone was revoked. Pair again."; case .expired: "The pairing code expired or was already used."; case .server(let status): "The bridge rejected the request (\(status))." }
     }
 }
 
@@ -290,14 +290,14 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
     override func viewDidLoad() { super.viewDidLoad(); view.backgroundColor = .black; configure() }
     override func viewDidLayoutSubviews() { super.viewDidLayoutSubviews(); layer?.frame = view.bounds }
     private func configure() {
-        guard let camera = AVCaptureDevice.default(for: .video), let input = try? AVCaptureDeviceInput(device: camera), session.canAddInput(input) else { message("无法使用相机，请手动输入配对码。"); return }
+        guard let camera = AVCaptureDevice.default(for: .video), let input = try? AVCaptureDeviceInput(device: camera), session.canAddInput(input) else { message("Camera unavailable. Type the pairing code instead."); return }
         session.addInput(input); let output = AVCaptureMetadataOutput()
-        guard session.canAddOutput(output) else { message("无法启动二维码扫描。"); return }
+        guard session.canAddOutput(output) else { message("Could not start the QR scanner."); return }
         session.addOutput(output); output.setMetadataObjectsDelegate(self, queue: .main); output.metadataObjectTypes = [.qr]
         let preview = AVCaptureVideoPreviewLayer(session: session); preview.videoGravity = .resizeAspectFill; view.layer.addSublayer(preview); layer = preview
-        let close = UIButton(type: .system); close.setTitle("关闭", for: .normal); close.tintColor = .white; close.addTarget(self, action: #selector(closeScanner), for: .touchUpInside); close.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(close)
+        let close = UIButton(type: .system); close.setTitle("Close", for: .normal); close.tintColor = .white; close.addTarget(self, action: #selector(closeScanner), for: .touchUpInside); close.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(close)
         NSLayoutConstraint.activate([close.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 18), close.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20)])
-        AVCaptureDevice.requestAccess(for: .video) { [weak self] allowed in DispatchQueue.main.async { if allowed { self?.session.startRunning() } else { self?.message("请在系统设置中允许相机权限。") } } }
+        AVCaptureDevice.requestAccess(for: .video) { [weak self] allowed in DispatchQueue.main.async { if allowed { self?.session.startRunning() } else { self?.message("Allow camera access in Settings.") } } }
     }
     func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
         guard !scanned, let value = metadataObjects.compactMap({ $0 as? AVMetadataMachineReadableCodeObject }).first?.stringValue else { return }

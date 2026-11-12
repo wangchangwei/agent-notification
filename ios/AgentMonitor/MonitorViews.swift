@@ -38,7 +38,7 @@ struct RootView: View {
                 if store.paired {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { settings = true } label: { Image(systemName: "slider.horizontal.3") }
-                            .accessibilityLabel("打开设置")
+                            .accessibilityLabel("Open settings")
                     }
                 }
             }
@@ -48,7 +48,7 @@ struct RootView: View {
                         Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Palette.waiting)
                         Text(error).font(.footnote).frame(maxWidth: .infinity, alignment: .leading)
                         Button { store.error = nil } label: { Image(systemName: "xmark") }
-                            .accessibilityLabel("关闭提示")
+                            .accessibilityLabel("Dismiss message")
                             .frame(minWidth: 44, minHeight: 44)
                     }
                     .padding(.leading, 16)
@@ -92,7 +92,7 @@ private struct StatusBadge: View {
             } else {
                 Image(systemName: stale ? "clock" : status.symbol).imageScale(.small)
             }
-            Text(stale ? "过期 · \(status.title)" : status.title)
+            Text(stale ? "Stale · \(status.title)" : status.title)
         }
         .font(.caption2.weight(.semibold))
         .foregroundStyle(stale ? Color.secondary : status.tint)
@@ -100,7 +100,7 @@ private struct StatusBadge: View {
         .padding(.vertical, 4)
         .background((stale ? Color.secondary : status.tint).opacity(0.12), in: Capsule())
         .fixedSize(horizontal: true, vertical: false)
-        .accessibilityLabel(stale ? "上次状态：\(status.title)，当前已过期" : status.title)
+        .accessibilityLabel(stale ? "Last known: \(status.title), now stale" : status.title)
     }
 }
 
@@ -111,11 +111,11 @@ private struct AgeLabel: View {
 
     static func text(date: Date, now: Date) -> String {
         let seconds = Int(max(0, now.timeIntervalSince(date)))
-        if seconds < 5 { return "刚刚" }
-        if seconds < 60 { return "\(seconds) 秒前" }
-        if seconds < 3_600 { return "\(seconds / 60) 分钟前" }
-        if seconds < 86_400 { return "\(seconds / 3_600) 小时前" }
-        return "\(seconds / 86_400) 天前"
+        if seconds < 5 { return "just now" }
+        if seconds < 60 { return "\(seconds)s ago" }
+        if seconds < 3_600 { return "\(seconds / 60)m ago" }
+        if seconds < 86_400 { return "\(seconds / 3_600)h ago" }
+        return "\(seconds / 86_400)d ago"
     }
 }
 
@@ -131,13 +131,13 @@ private struct StatusSummary: View {
     private var current: Bool { store.snapshotIsCurrent(at: now) }
     private var tone: Color { current ? Palette.accent : Palette.waiting }
     private var headline: String {
-        if current { return "同步正常" }
-        if store.lastSync == nil && store.syncError == nil { return "正在连接" }
-        return "同步异常 · 显示上次记录"
+        if current { return "Synced" }
+        if store.lastSync == nil && store.syncError == nil { return "Connecting" }
+        return "Sync problem · showing last snapshot"
     }
     private var detail: String {
-        guard current else { return "等待下一次同步" }
-        return "\(running) 执行中 · \(waiting) 待处理 · \(online) 台在线"
+        guard current else { return "Waiting for the next sync" }
+        return "\(running) running · \(waiting) waiting · \(online) online"
     }
 
     var body: some View {
@@ -163,7 +163,7 @@ private struct StatusSummary: View {
 }
 
 private enum TaskFilter: String, CaseIterable, Identifiable {
-    case all = "全部", running = "执行中", waiting = "待处理", finished = "已结束"
+    case all = "All", running = "Running", waiting = "Waiting", finished = "Finished"
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -213,9 +213,9 @@ struct Dashboard: View {
                 }
                 Section {
                     if store.lastSync == nil && store.syncError == nil {
-                        placeholder("正在加载电脑状态…")
+                        placeholder("Loading computers…")
                     } else if store.devices.isEmpty {
-                        placeholder("还没有连接电脑。在 Mac 上运行 agent-monitor pair 完成绑定。")
+                        placeholder("No Macs yet. Run agent-monitor pair on a Mac to bind it.")
                     }
                     ForEach(store.devices.sorted { $0.deviceId < $1.deviceId }) { device in
                         DeviceRow(
@@ -225,38 +225,38 @@ struct Dashboard: View {
                             snapshotCurrent: current
                         )
                         .swipeActions {
-                            Button("撤销绑定", role: .destructive) { Task { await store.revoke(device) } }
-                            Button("备注") { renameText = device.deviceName ?? ""; renaming = device }.tint(.indigo)
+                            Button("Revoke", role: .destructive) { Task { await store.revoke(device) } }
+                            Button("Rename") { renameText = device.deviceName ?? ""; renaming = device }.tint(.indigo)
                         }
                         .contextMenu {
-                            Button("重命名这台电脑") { renameText = device.deviceName ?? ""; renaming = device }
+                            Button("Rename this Mac") { renameText = device.deviceName ?? ""; renaming = device }
                         }
                     }
                 } header: {
-                    sectionHeader("电脑", trailing: "\(store.devices.count) 台")
+                    sectionHeader("Computers", trailing: "\(store.devices.count)")
                 } footer: {
-                    Text("电脑失联只说明心跳过期，不代表任务失败。轻点并左滑可给这台电脑起个名字。")
+                    Text("A missing heartbeat only means the Mac is offline; it does not mean its tasks failed. Swipe a computer row to rename it.")
                 }
-                .alert("给这台电脑起名", isPresented: Binding(
+                .alert("Name this Mac", isPresented: Binding(
                     get: { renaming != nil },
                     set: { if !$0 { renaming = nil } }
                 )) {
-                    TextField("例如：工作室的 MacBook", text: $renameText)
-                    Button("取消", role: .cancel) { renaming = nil }
-                    Button("保存") {
+                    TextField("e.g. Studio MacBook", text: $renameText)
+                    Button("Cancel", role: .cancel) { renaming = nil }
+                    Button("Save") {
                         guard let device = renaming else { return }
                         let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
                         renaming = nil
                         Task { await store.rename(device, to: name) }
                     }
                 } message: {
-                    Text("只在这台手机上显示，用来区分多台电脑；留空则恢复默认。")
+                    Text("Shown on this phone only, to tell Macs apart. Leave it empty for the default.")
                 }
                 Section {
                     if store.lastSync == nil && store.syncError == nil {
-                        placeholder("正在加载任务…")
+                        placeholder("Loading tasks…")
                     } else if visible.isEmpty {
-                        placeholder(tasks.isEmpty ? "还没有记录。Hermes 开始执行后会出现在这里。" : "没有\(filter.rawValue)的任务。")
+                        placeholder(tasks.isEmpty ? "No activity yet. Tasks appear here once Hermes starts working." : "No \(filter.rawValue.lowercased()) tasks.")
                     }
                     ForEach(visible, id: \.taskKey) { event in
                         NavigationLink {
@@ -266,9 +266,9 @@ struct Dashboard: View {
                         }
                     }
                 } header: {
-                    sectionHeader("最近", trailing: filter == .all ? "\(visible.count) 项" : "\(filter.rawValue) · \(visible.count)")
+                    sectionHeader("Recent", trailing: filter == .all ? "\(visible.count)" : "\(filter.rawValue) · \(visible.count)")
                 } footer: {
-                    Text("保留 7 天。本轮结束表示这一轮输出完成，结果仍需验收。")
+                    Text("Kept for 7 days. A finished turn means the agent stopped for that turn; the result still needs review.")
                 }
             }
             .listStyle(.insetGrouped)
@@ -276,20 +276,20 @@ struct Dashboard: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Picker("筛选", selection: $filter) {
+                        Picker("Filter", selection: $filter) {
                             ForEach(TaskFilter.allCases) { item in
                                 Label(item.rawValue, systemImage: item.symbol).tag(item)
                             }
                         }
                         Divider()
                         Button { Task { await store.refresh() } } label: {
-                            Label("立即刷新", systemImage: "arrow.clockwise")
+                            Label("Refresh now", systemImage: "arrow.clockwise")
                         }
                         .disabled(store.isRefreshing)
                     } label: {
                         Image(systemName: filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                     }
-                    .accessibilityLabel("筛选任务")
+                    .accessibilityLabel("Filter tasks")
                 }
             }
         }
@@ -344,9 +344,9 @@ private struct DeviceRow: View {
     }
 
     private var subtitle: String {
-        if !snapshotCurrent { return online ? "连接中" : "上次心跳已过期" }
-        if !online { return "失联 · 状态已过期" }
-        return activeTasks == 0 ? "在线 · 空闲" : "在线 · \(activeTasks) 项进行中"
+        if !snapshotCurrent { return online ? "Connecting" : "Last heartbeat expired" }
+        if !online { return "Offline · state is stale" }
+        return activeTasks == 0 ? "Online · idle" : "Online · \(activeTasks) active"
     }
 }
 
@@ -396,7 +396,7 @@ struct TaskDetail: View {
                     Section {
                         TaskRow(event: event, stale: stale)
                         if stale {
-                            Label(deviceOnline ? "同步中断，以下是上次记录。" : "电脑失联，执行状态已过期。",
+                            Label(deviceOnline ? "Sync interrupted; this is the last snapshot." : "Mac offline; this state is stale.",
                                   systemImage: "clock.badge.exclamationmark")
                                 .font(.footnote)
                                 .foregroundStyle(Palette.waiting)
@@ -404,11 +404,11 @@ struct TaskDetail: View {
                     }
                     Section {
                         LabeledContent("Agent", value: event.brandLabel)
-                        LabeledContent("类型", value: event.agentKind)
-                        LabeledContent("电脑", value: "Mac · \(deviceId.suffix(6))")
-                        LabeledContent("最后事件", value: event.date.formatted(date: .abbreviated, time: .standard))
+                        LabeledContent("Kind", value: event.agentKind)
+                        LabeledContent("Mac", value: "Mac · \(deviceId.suffix(6))")
+                        LabeledContent("Last event", value: event.date.formatted(date: .abbreviated, time: .standard))
                         if let parent = event.parentTaskId {
-                            LabeledContent("父任务", value: String(parent.suffix(6)))
+                            LabeledContent("Parent", value: String(parent.suffix(6)))
                         }
                     }
                     Section {
@@ -422,7 +422,7 @@ struct TaskDetail: View {
                                     HStack(spacing: 8) {
                                         Text(item.date.formatted(date: .omitted, time: .standard)).monospacedDigit()
                                         if let duration = item.durationMs {
-                                            Text("用时 \((Double(duration) / 1_000).formatted(.number.precision(.fractionLength(0...2)))) 秒")
+                                            Text("\((Double(duration) / 1_000).formatted(.number.precision(.fractionLength(0...2))))s")
                                         }
                                     }
                                     .font(.footnote)
@@ -434,17 +434,17 @@ struct TaskDetail: View {
                             .accessibilityElement(children: .combine)
                         }
                     } header: {
-                        Text("事件记录 · \(history.count)").textCase(nil)
+                        Text("Events · \(history.count)").textCase(nil)
                     } footer: {
-                        Text("按最近时间排序。本轮结束不代表结果已验收。")
+                        Text("Newest first. A finished turn does not mean the result was accepted.")
                     }
                 } else {
-                    ContentUnavailableView("没有这条记录", systemImage: "clock", description: Text("记录可能已清空或超过 7 天保留期。"))
+                    ContentUnavailableView("No record for this task", systemImage: "clock", description: Text("It may have been cleared, or is older than the 7-day window."))
                 }
             }
             .listStyle(.insetGrouped)
             .refreshable { await store.refresh() }
-            .navigationTitle(history.first?.displayName ?? "详情")
+            .navigationTitle(history.first?.displayName ?? "Details")
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -460,37 +460,37 @@ struct Pairing: View {
         Form {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("在手机上查看 Hermes 的执行状态").font(.headline)
-                    Text("绑定后，任务开始、等待人工处理、本轮结束和失败都会同步到这里。")
+                    Text("Hermes status, on your phone").font(.headline)
+                    Text("Once paired, task starts, waiting states, finished turns and failures sync here.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 4)
             }
             Section {
-                TextField("HTTPS 服务地址", text: $bridge)
+                TextField("Bridge URL (https)", text: $bridge)
                     .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .accessibilityLabel("服务地址")
+                    .accessibilityLabel("Bridge URL")
                 HStack {
-                    TextField("一次性配对码", text: $code).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("One-time pairing code", text: $code).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button { scanning = true } label: { Image(systemName: "qrcode.viewfinder") }
-                        .accessibilityLabel("扫描配对二维码").frame(minWidth: 44, minHeight: 44)
+                        .accessibilityLabel("Scan pairing QR code").frame(minWidth: 44, minHeight: 44)
                 }
                 Button {
                     Task { await store.pair(rawCode: code, rawBridge: bridge) }
                 } label: {
                     HStack(spacing: 8) {
                         if store.isPairing { ProgressView().controlSize(.small) }
-                        Text(store.isPairing ? "正在绑定…" : "绑定 Mac")
+                        Text(store.isPairing ? "Pairing…" : "Pair Mac")
                     }
                     .frame(maxWidth: .infinity, minHeight: 32)
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isPairing)
             } header: {
-                Text("绑定电脑")
+                Text("Pair a Mac")
             } footer: {
-                Text("在 Mac 运行 agent-monitor pair 生成二维码。配对码 5 分钟内有效，只能使用一次。")
+                Text("Run agent-monitor pair on the Mac to get a QR code. The code is valid for 5 minutes and works once.")
             }
         }
         .sheet(isPresented: $scanning) {
@@ -512,10 +512,10 @@ private struct MonitorSettings: View {
 
     private var notificationTitle: String {
         switch notificationStatus {
-        case .authorized, .provisional, .ephemeral: "已允许"
-        case .denied: "未允许"
-        case .notDetermined: "未开启"
-        @unknown default: "未知"
+        case .authorized, .provisional, .ephemeral: "Allowed"
+        case .denied: "Denied"
+        case .notDetermined: "Not requested"
+        @unknown default: "Unknown"
         }
     }
 
@@ -523,18 +523,18 @@ private struct MonitorSettings: View {
         NavigationStack {
             Form {
                 Section {
-                    LabeledContent("服务", value: URL(string: store.bridge)?.host ?? store.bridge)
-                    LabeledContent("绑定电脑", value: "\(store.devices.count) 台")
-                    LabeledContent("最近同步", value: store.lastSync?.formatted(date: .omitted, time: .standard) ?? "尚未同步")
+                    LabeledContent("Bridge", value: URL(string: store.bridge)?.host ?? store.bridge)
+                    LabeledContent("Macs", value: "\(store.devices.count)")
+                    LabeledContent("Last sync", value: store.lastSync?.formatted(date: .omitted, time: .standard) ?? "Never")
                     if let error = store.error {
                         Text(error).font(.footnote).foregroundStyle(Palette.waiting)
                     }
                 } header: {
-                    Text("连接")
+                    Text("Connection")
                 }
                 Section {
-                    LabeledContent("通知权限", value: notificationTitle)
-                    Button(notificationStatus == .notDetermined ? "开启任务通知" : "管理通知设置") {
+                    LabeledContent("Permission", value: notificationTitle)
+                    Button(notificationStatus == .notDetermined ? "Enable task notifications" : "Manage notifications") {
                         Task {
                             if notificationStatus != .notDetermined {
                                 if let url = URL(string: UIApplication.openSettingsURLString) { await UIApplication.shared.open(url) }
@@ -546,43 +546,43 @@ private struct MonitorSettings: View {
                         }
                     }
                 } header: {
-                    Text("任务通知")
+                    Text("Task notifications")
                 } footer: {
-                    Text("完成、失败、等待处理时提醒。锁屏只显示事件类型，打开 App 可同步最新状态。")
+                    Text("Alerts for finished, failed and waiting tasks. The lock screen shows only the event type; open the app for the current state.")
                 }
                 Section {
                     Toggle(isOn: Binding(get: { store.soundEnabled }, set: { store.setSoundEnabled($0) })) {
-                        Label("本轮结束提示音", systemImage: "speaker.wave.2")
+                        Label("Sound when a turn finishes", systemImage: "speaker.wave.2")
                     }
                     Button { CompletionFeedback.play() } label: {
-                        Label("试听提示音", systemImage: "play.circle")
+                        Label("Preview sound", systemImage: "play.circle")
                     }
                     .disabled(!store.soundEnabled)
                 } header: {
-                    Text("提示音")
+                    Text("Sound")
                 } footer: {
-                    Text("仅在 App 打开时、任务从执行中转为本轮结束时响一次；静音键开启时只震动。")
+                    Text("Plays once while the app is open when a task turns from running to finished; with the mute switch on it only vibrates.")
                 }
                 Section {
-                    Button("清空云端历史", role: .destructive) { confirmClearHistory = true }
-                    Button("解除此手机绑定", role: .destructive) { confirmUnpair = true }
+                    Button("Clear cloud history", role: .destructive) { confirmClearHistory = true }
+                    Button("Unpair this phone", role: .destructive) { confirmUnpair = true }
                 } header: {
-                    Text("数据与绑定")
+                    Text("Data & pairing")
                 } footer: {
-                    Text("云端保留 7 天。清空历史不会删除 Mac 上的本地事件；电脑列表左滑可撤销单台电脑。")
+                    Text("Cloud records are kept for 7 days. Clearing history does not delete events still queued on a Mac; swipe a computer row to revoke one.")
                 }
             }
-            .navigationTitle("设置")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task(id: phase) { await updateNotificationStatus() }
-            .confirmationDialog("清空 7 天任务历史？此操作无法撤销。", isPresented: $confirmClearHistory, titleVisibility: .visible) {
-                Button("清空云端历史", role: .destructive) { Task { await store.clearCloudHistory() } }
-                Button("取消", role: .cancel) {}
+            .confirmationDialog("Clear the 7-day task history? This cannot be undone.", isPresented: $confirmClearHistory, titleVisibility: .visible) {
+                Button("Clear cloud history", role: .destructive) { Task { await store.clearCloudHistory() } }
+                Button("Cancel", role: .cancel) {}
             }
-            .confirmationDialog("解除后此手机凭证立即失效。", isPresented: $confirmUnpair, titleVisibility: .visible) {
-                Button("解除绑定", role: .destructive) { Task { await store.unpair(); if !store.paired { dismiss() } } }
-                Button("取消", role: .cancel) {}
+            .confirmationDialog("This phone stops working immediately after unpairing.", isPresented: $confirmUnpair, titleVisibility: .visible) {
+                Button("Unpair", role: .destructive) { Task { await store.unpair(); if !store.paired { dismiss() } } }
+                Button("Cancel", role: .cancel) {}
             }
         }
         .tint(Palette.accent)

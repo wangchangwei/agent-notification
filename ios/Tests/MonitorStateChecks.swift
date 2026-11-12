@@ -13,7 +13,7 @@ import Foundation
             var payload: [String: Any] = [
                 "event_id": "event-\(device)-\(time)", "task_id": "same-task",
                 "device_id": device, "event_type": type, "status": status,
-                "occurred_at": time, "summary": "工具执行完毕", "tool_name": "terminal"
+                "occurred_at": time, "summary": "Tool finished", "tool_name": "terminal"
             ]
             if let parent { payload["parent_task_id"] = parent }
             if let title { payload["title"] = title }
@@ -22,7 +22,7 @@ import Foundation
         }
         let toolReturned = try event("running")
         check(toolReturned.taskStatus == .running, "A returned tool must not mark the task completed")
-        check(toolReturned.activity == "terminal 已返回", "The row must keep the tool name after it returns")
+        check(toolReturned.activity == "terminal returned", "The row must keep the tool name after it returns")
         check(toolReturned.durationMs == nil, "Older snapshots without duration must still decode")
         check(tryStatus("incomplete", "interrupted", decoder) == .incomplete, "An incomplete turn must be distinguished from an explicit interruption")
         check(tryStatus("interrupted", "interrupted", decoder) == .interrupted, "Explicit interruption must remain an interruption")
@@ -33,16 +33,16 @@ import Foundation
         let unknown = try event("future-status")
         check(unknown.taskStatus == .unknown, "Unrecognized status must be unknown")
         check(!unknown.taskStatus.isActive, "Unknown must not inflate active task counts")
-        check(MonitorTaskStatus.completed.title == "本轮结束", "Completed must not imply accepted results")
+        check(MonitorTaskStatus.completed.title == "Finished", "Completed must not imply accepted results")
         check(MonitorTaskStatus.waiting.isActive, "Waiting tasks are still active")
         check(!MonitorTaskStatus.failed.isActive, "Failed tasks are no longer active")
-        check(toolReturned.agentKind == "主 agent", "A task without a parent is the main agent")
+        check(toolReturned.agentKind == "Main agent", "A task without a parent is the main agent")
         let child = try event("running", parent: "11111111-2222-3333-4444-555555555555")
-        check(child.agentKind == "子 agent", "A task with a parent is a sub-agent")
-        let titled = try event("running", title: "优化 iOS 页面")
-        check(titled.displayName == "优化 iOS 页面", "A scrubbed request title is the row title")
+        check(child.agentKind == "Sub-agent", "A task with a parent is a sub-agent")
+        let titled = try event("running", title: "Polish the iOS screen")
+        check(titled.displayName == "Polish the iOS screen", "A scrubbed request title is the row title")
         check(!toolReturned.displayName.contains("same-task"), "A row never falls back to a raw task id")
-        check(!toolReturned.displayName.contains("未命名"), "A row never shows an empty placeholder")
+        check(!toolReturned.displayName.isEmpty, "A row never shows an empty placeholder")
         check(toolReturned.displayName.hasPrefix("Agent · "), "Without a title or brand the row falls back to a neutral label and time")
         check(child.displayName.hasPrefix("Agent · "), "A child task uses the same fallback")
         let hermesTask = try event("running", brand: "hermes")
@@ -114,7 +114,7 @@ import Foundation
 
     private static func tryStatus(_ type: String, _ status: String, _ decoder: JSONDecoder) -> MonitorTaskStatus {
         let payload = """
-        {"event_id":"e","task_id":"t","device_id":"d","event_type":"\(type)","status":"\(status)","occurred_at":100,"summary":"状态"}
+        {"event_id":"e","task_id":"t","device_id":"d","event_type":"\(type)","status":"\(status)","occurred_at":100,"summary":"Tool finished"}
         """
         return try! decoder.decode(MonitorEvent.self, from: Data(payload.utf8)).taskStatus
     }

@@ -9,7 +9,7 @@
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSRequiresIPhoneOS</key><true/>
-<key>NSCameraUsageDescription</key><string>扫描 Mac 上的一次性配对二维码。</string>
+<key>NSCameraUsageDescription</key><string>Scan the one-time pairing QR code shown on your Mac.</string>
 <key>UILaunchScreen</key><dict/>
 <key>UIApplicationSupportsIndirectInputEvents</key><true/>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>

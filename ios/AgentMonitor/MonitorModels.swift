@@ -108,7 +108,7 @@ struct MonitorEvent: Codable, Identifiable {
         // name the row by the harness instead of an empty placeholder.
         return "\(brandLabel) · \(Self.clock.string(from: date))"
     }
-    var agentKind: String { parentTaskId == nil ? "主 agent" : "子 agent" }
+    var agentKind: String { parentTaskId == nil ? "Main agent" : "Sub-agent" }
     var brandLabel: String {
         guard let brand, !brand.isEmpty else { return "Agent" }
         switch brand {
@@ -141,8 +141,8 @@ struct MonitorEvent: Codable, Identifiable {
         return MonitorTaskStatus(rawValue: status) ?? .unknown
     }
     var activity: String {
-        if let toolName, eventType == "tool_started" { return "调用 \(toolName)" }
-        if let toolName, eventType == "tool_finished" { return "\(toolName) 已返回" }
+        if let toolName, eventType == "tool_started" { return "Called \(toolName)" }
+        if let toolName, eventType == "tool_finished" { return "\(toolName) returned" }
         return summary
     }
 }
@@ -152,13 +152,13 @@ enum MonitorTaskStatus: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .running: "执行中"
-        case .waiting: "待处理"
-        case .completed: "本轮结束"
-        case .failed: "失败"
-        case .interrupted: "已中断"
-        case .incomplete: "未完整结束"
-        case .unknown: "未知"
+        case .running: "Running"
+        case .waiting: "Waiting"
+        case .completed: "Finished"
+        case .failed: "Failed"
+        case .interrupted: "Interrupted"
+        case .incomplete: "Incomplete"
+        case .unknown: "Unknown"
         }
     }
     var symbol: String {
