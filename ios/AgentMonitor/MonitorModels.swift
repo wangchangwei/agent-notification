@@ -67,8 +67,19 @@ struct MonitorDevice: Codable, Identifiable {
     let deviceId: String
     let lastSeen: Int
     let online: Bool
+    /// Set from the phone; the Mac's own setup name is the fallback.
+    let deviceName: String?
     var id: String { deviceId }
-    var displayName: String { "Mac · \(deviceId.suffix(6))" }
+    init(deviceId: String, lastSeen: Int, online: Bool, deviceName: String? = nil) {
+        self.deviceId = deviceId
+        self.lastSeen = lastSeen
+        self.online = online
+        self.deviceName = deviceName
+    }
+    var displayName: String {
+        if let deviceName, !deviceName.isEmpty { return deviceName }
+        return "Mac · \(deviceId.suffix(6))"
+    }
 
     func isOnline(at date: Date) -> Bool {
         online && lastSeen > 0 && date.timeIntervalSince1970 - TimeInterval(lastSeen) <= 120
@@ -93,7 +104,9 @@ struct MonitorEvent: Codable, Identifiable {
     var date: Date { Date(timeIntervalSince1970: occurredAt) }
     var displayName: String {
         if let title, !title.isEmpty { return title }
-        return "未命名 · \(Self.clock.string(from: date))"
+        // No scrubbed request title (older events, or a turn whose prompt was withheld):
+        // name the row by the harness instead of an empty placeholder.
+        return "\(brandLabel) · \(Self.clock.string(from: date))"
     }
     var agentKind: String { parentTaskId == nil ? "主 agent" : "子 agent" }
     var brandLabel: String {

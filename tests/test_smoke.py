@@ -284,6 +284,30 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(len(self.pushes), 1, "a stale waiting event must not ring after a newer completion")
         self.assertEqual(len(self.client.get("/v1/snapshot", headers=phone).json()["events"]), 2)
 
+    def test_snapshot_reports_device_names_and_rename_is_scoped(self) -> None:
+        setup, mac, phone = self._pair()
+        snapshot = self.client.get("/v1/snapshot", headers=phone).json()
+        self.assertEqual(snapshot["devices"][0]["device_name"], "Mac")
+
+        renamed = self.client.put(
+            "/v1/devices/" + setup["device_id"], headers=phone, json={"device_name": "  工作室的 MacBook  "}
+        )
+        self.assertEqual(renamed.status_code, 200, renamed.text)
+        self.assertEqual(renamed.json()["device_name"], "工作室的 MacBook")
+        self.assertEqual(self.client.get("/v1/snapshot", headers=phone).json()["devices"][0]["device_name"], "工作室的 MacBook")
+
+        # The Mac's own credential may not rename devices, and control characters are scrubbed.
+        self.assertEqual(
+            self.client.put("/v1/devices/" + setup["device_id"], headers=mac, json={"device_name": "x"}).status_code, 403
+        )
+        scrubbed = self.client.put(
+            "/v1/devices/" + setup["device_id"], headers=phone, json={"device_name": "a\nb\tc"}
+        )
+        self.assertEqual(scrubbed.json()["device_name"], "a b c")
+        self.assertEqual(
+            self.client.put("/v1/devices/" + str(uuid.uuid4()), headers=phone, json={"device_name": "x"}).status_code, 404
+        )
+
     def test_apns_is_disabled_without_credentials(self) -> None:
         self.assertIsNone(self.bridge._apns_jwt())
 

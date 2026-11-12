@@ -187,6 +187,8 @@ private enum TaskFilter: String, CaseIterable, Identifiable {
 struct Dashboard: View {
     @ObservedObject var store: MonitorStore
     @State private var filter: TaskFilter = .all
+    @State private var renaming: MonitorDevice?
+    @State private var renameText = ""
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 5)) { context in
@@ -224,12 +226,31 @@ struct Dashboard: View {
                         )
                         .swipeActions {
                             Button("撤销绑定", role: .destructive) { Task { await store.revoke(device) } }
+                            Button("备注") { renameText = device.deviceName ?? ""; renaming = device }.tint(.indigo)
+                        }
+                        .contextMenu {
+                            Button("重命名这台电脑") { renameText = device.deviceName ?? ""; renaming = device }
                         }
                     }
                 } header: {
                     sectionHeader("电脑", trailing: "\(store.devices.count) 台")
                 } footer: {
-                    Text("电脑失联只说明心跳过期，不代表任务失败。")
+                    Text("电脑失联只说明心跳过期，不代表任务失败。轻点并左滑可给这台电脑起个名字。")
+                }
+                .alert("给这台电脑起名", isPresented: Binding(
+                    get: { renaming != nil },
+                    set: { if !$0 { renaming = nil } }
+                )) {
+                    TextField("例如：工作室的 MacBook", text: $renameText)
+                    Button("取消", role: .cancel) { renaming = nil }
+                    Button("保存") {
+                        guard let device = renaming else { return }
+                        let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        renaming = nil
+                        Task { await store.rename(device, to: name) }
+                    }
+                } message: {
+                    Text("只在这台手机上显示，用来区分多台电脑；留空则恢复默认。")
                 }
                 Section {
                     if store.lastSync == nil && store.syncError == nil {

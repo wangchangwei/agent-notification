@@ -42,6 +42,15 @@ class PushTokenRequest(StrictModel):
     token: str = Field(min_length=32, max_length=512, pattern=r"^[0-9a-fA-F]+$")
 
 
+class DeviceRenameRequest(StrictModel):
+    device_name: str = Field(min_length=1, max_length=40)
+
+
+def _clean_device_name(raw: str) -> str:
+    text = re.sub(r"[\x00-\x1f\x7f]", " ", str(raw or ""))
+    return re.sub(r"\s+", " ", text).strip()[:40]
+
+
 class MonitorEvent(StrictModel):
     event_id: str = Field(pattern=r"^[a-fA-F0-9-]{36}$")
     task_id: str = Field(pattern=r"^[a-fA-F0-9-]{36}$")
@@ -406,13 +415,22 @@ def snapshot(context: dict[str, str] = Depends(_auth_context)) -> dict[str, obje
     event_results = _redis_pipeline(event_commands) if event_commands else []
     seen_raw = _redis_pipeline([["MGET", *[f"device:{device_id}:last-seen" for device_id in valid_ids]]])[0] if valid_ids else []
     seen_items = seen_raw if isinstance(seen_raw, list) else []
+    names_raw = _redis_pipeline([["MGET", *[f"device:{device_id}" for device_id in valid_ids]]])[0] if valid_ids else []
+    names_items = names_raw if isinstance(names_raw, list) else []
     devices = []
-    for device_id, last_seen in zip(valid_ids, seen_items):
+    for index, (device_id, last_seen) in enumerate(zip(valid_ids, seen_items)):
         try:
             observed = int(last_seen)
         except (ValueError, TypeError):
             observed = 0
-        devices.append({"device_id": device_id, "last_seen": observed, "online": observed > 0 and now - observed <= HEARTBEAT_TTL})
+        device_name = ""
+        if index < len(names_items) and isinstance(names_items[index], str):
+            try:
+                device_name = _clean_device_name(str(json.loads(names_items[index]).get("device_name") or ""))
+            except (TypeError, ValueError):
+                device_name = ""
+        devices.append({"device_id": device_id, "device_name": device_name,
+                        "last_seen": observed, "online": observed > 0 and now - observed <= HEARTBEAT_TTL})
     events: list[dict[str, object]] = []
     for index in range(1, len(event_results), 2):
         values = event_results[index]
@@ -449,6 +467,32 @@ def unpair_phone(context: dict[str, str] = Depends(_auth_context)) -> dict[str, 
         ["DEL", f"owner:{context['owner_id']}:push-token"],
     ])
     return {"unpaired": True}
+
+
+@app.put("/v1/devices/{device_id}")
+def rename_device(device_id: str, request: DeviceRenameRequest,
+                  context: dict[str, str] = Depends(_auth_context)) -> dict[str, str]:
+    _require_kind(context, "phone")
+    try:
+        device_id = str(uuid.UUID(device_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Device not found") from exc
+    name = _clean_device_name(request.device_name)
+    if not name:
+        raise HTTPException(status_code=422, detail="Device name is empty")
+    owner = context["owner_id"]
+    lookup = _redis_pipeline([["GET", f"device:{device_id}"]])[0]
+    try:
+        if not isinstance(lookup, str):
+            raise ValueError
+        record = json.loads(lookup)
+        if record.get("owner_id") != owner:
+            raise ValueError
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Device not found") from exc
+    record["device_name"] = name
+    _redis_pipeline([["SET", f"device:{device_id}", json.dumps(record)]])
+    return {"device_id": device_id, "device_name": name}
 
 
 @app.delete("/v1/devices/{device_id}")

@@ -131,6 +131,22 @@ import UserNotifications
         catch { self.error = error.localizedDescription }
     }
 
+    func rename(_ device: MonitorDevice, to name: String) async {
+        let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
+        let fallback = trimmed.isEmpty ? "Mac" : trimmed
+        do {
+            let _: RenameAck = try await authorized(
+                "/v1/devices/\(device.deviceId)", method: "PUT", body: RenameRequest(deviceName: fallback)
+            )
+            if let index = devices.firstIndex(where: { $0.deviceId == device.deviceId }) {
+                devices[index] = MonitorDevice(
+                    deviceId: device.deviceId, lastSeen: device.lastSeen, online: device.online, deviceName: fallback
+                )
+            }
+            await refresh()
+        } catch { self.error = error.localizedDescription }
+    }
+
     func unpair() async {
         do { let _: Ack = try await authorized("/v1/pairing", method: "DELETE") }
         catch { self.error = "云端解绑未确认，凭证保留在本机。"; return }
@@ -248,6 +264,8 @@ private enum Keychain {
 private struct PairRequest: Encodable { let code: String }
 private struct PairResponse: Decodable { let ownerId: String; let accessToken: String }
 private struct PushRequest: Encodable { let token: String }
+private struct RenameRequest: Encodable { let deviceName: String }
+private struct RenameAck: Decodable { let deviceId: String?; let deviceName: String? }
 private struct Ack: Decodable { let registered: Bool?; let revoked: Bool?; let unpaired: Bool?; let cleared: Bool? }
 private struct EmptyBody: Encodable {}
 
