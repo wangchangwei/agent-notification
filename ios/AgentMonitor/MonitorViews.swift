@@ -189,6 +189,12 @@ struct Dashboard: View {
     @State private var filter: TaskFilter = .all
     @State private var renaming: MonitorDevice?
     @State private var renameText = ""
+    #if DEBUG
+    // Debug-only: lets a simulator run open the sheet for a screenshot.
+    @State private var addingComputer = ProcessInfo.processInfo.environment["MONITOR_DEBUG_ADD_COMPUTER"] == "1"
+    #else
+    @State private var addingComputer = false
+    #endif
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 5)) { context in
@@ -215,7 +221,7 @@ struct Dashboard: View {
                     if store.lastSync == nil && store.syncError == nil {
                         placeholder("Loading computers…")
                     } else if store.devices.isEmpty {
-                        placeholder("No Macs yet. Run agent-monitor pair on a Mac to bind it.")
+                        placeholder("No Macs yet. Tap Add a computer, then run the command it shows on that Mac.")
                     }
                     ForEach(store.devices.sorted { $0.deviceId < $1.deviceId }) { device in
                         DeviceRow(
@@ -231,6 +237,9 @@ struct Dashboard: View {
                         .contextMenu {
                             Button("Rename this Mac") { renameText = device.deviceName ?? ""; renaming = device }
                         }
+                    }
+                    Button { addingComputer = true } label: {
+                        Label("Add a computer", systemImage: "plus.circle")
                     }
                 } header: {
                     sectionHeader("Computers", trailing: "\(store.devices.count)")
@@ -292,6 +301,7 @@ struct Dashboard: View {
                     .accessibilityLabel("Filter tasks")
                 }
             }
+            .sheet(isPresented: $addingComputer) { AddComputerSheet(store: store) }
         }
     }
 
@@ -591,5 +601,105 @@ private struct MonitorSettings: View {
 
     private func updateNotificationStatus() async {
         notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+}
+
+/// Another Mac joins without ever seeing the bootstrap secret: this phone issues a one-time
+/// code and shows the exact command to paste there.
+private struct AddComputerSheet: View {
+    @ObservedObject var store: MonitorStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var code: String?
+    @State private var expiresAt: Date?
+    @State private var failure: String?
+    @State private var loading = false
+    @State private var copied = false
+
+    private static let installer = "https://github.com/wangchangwei/agent-notification/releases/latest/download/install.sh"
+
+    private var command: String {
+        "curl -fsSL " + Self.installer + " | sh -s -- --url " + store.bridge + " --code " + (code ?? "000000")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    if let code {
+                        Text(spaced(code))
+                            .font(.system(.largeTitle, design: .monospaced).weight(.semibold))
+                            .monospacedDigit()
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 8)
+                            .accessibilityLabel("Install code " + code.map(String.init).joined(separator: " "))
+                        if let expiresAt {
+                            LabeledContent("Valid until", value: expiresAt.formatted(date: .omitted, time: .shortened))
+                                .font(.footnote)
+                        }
+                    } else if loading {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Creating a code…").foregroundStyle(.secondary)
+                        }
+                    }
+                    if let failure {
+                        Text(failure).font(.footnote).foregroundStyle(Palette.waiting)
+                        Button("Try again") { Task { await load() } }
+                    }
+                } header: {
+                    Text("One-time code")
+                } footer: {
+                    Text("Works once and expires in 10 minutes. It only authorises adding a Mac to this account.")
+                }
+                Section {
+                    Text(command)
+                        .font(.system(.footnote, design: .monospaced))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        UIPasteboard.general.string = command
+                        copied = true
+                    } label: {
+                        Label(copied ? "Copied" : "Copy command", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    }
+                    .disabled(code == nil)
+                } header: {
+                    Text("Run this in Terminal on the new Mac")
+                } footer: {
+                    Text("It installs the probe and registers that Mac to this account. Start it there with agent-monitor run.")
+                }
+                Section {
+                    Button("New code") { Task { await load() } }.disabled(loading)
+                } footer: {
+                    Text("Each code is single use, so ask for one per Mac.")
+                }
+            }
+            .navigationTitle("Add a computer")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .task { if code == nil { await load() } }
+        }
+        .tint(Palette.accent)
+        .presentationDragIndicator(.visible)
+    }
+
+    private func spaced(_ code: String) -> String {
+        guard code.count == 6 else { return code }
+        let middle = code.index(code.startIndex, offsetBy: 3)
+        return "\(code[code.startIndex..<middle]) \(code[middle...])"
+    }
+
+    private func load() async {
+        loading = true; failure = nil; copied = false
+        defer { loading = false }
+        do {
+            let ack = try await store.createInstallCode()
+            code = ack.code
+            expiresAt = Date().addingTimeInterval(TimeInterval(ack.expiresInSeconds ?? 600))
+        } catch {
+            code = nil; expiresAt = nil
+            failure = error.localizedDescription
+        }
     }
 }

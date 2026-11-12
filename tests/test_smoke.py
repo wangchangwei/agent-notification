@@ -59,6 +59,13 @@ class FakeRedis:
                         del store[key]
                         removed += 1
             return removed
+        if op == "INCR":
+            key = str(args[0])
+            value = int(self.strings.get(key, 0)) + 1
+            self.strings[key] = str(value)
+            return value
+        if op == "EXPIRE":
+            return 1 if str(args[0]) in self.strings else 0
         if op == "SADD":
             self.sets.setdefault(str(args[0]), set()).add(str(args[1]))
             return 1
@@ -108,7 +115,9 @@ class FakeRedis:
         raise AssertionError(f"unsupported command: {command}")
 
 
-class BridgeTests(unittest.TestCase):
+class BridgeHarness(unittest.TestCase):
+    """Shared setup for the bridge suites; holds no tests of its own."""
+
     def setUp(self) -> None:
         os.environ["MONITOR_BOOTSTRAP_TOKEN"] = BOOTSTRAP
         from fastapi.testclient import TestClient
@@ -151,6 +160,7 @@ class BridgeTests(unittest.TestCase):
         event.update(overrides)
         return event
 
+class BridgeTests(BridgeHarness):
     def test_setup_requires_bootstrap(self) -> None:
         self.assertEqual(self.client.post("/v1/setup", json={}).status_code, 401)
         self.assertEqual(
@@ -607,6 +617,49 @@ class CliTests(unittest.TestCase):
         self.assertFalse(launch.exists())
 
 
+class CliSetupCodeTests(unittest.TestCase):
+    """`setup --code` must never reach the bootstrap prompt."""
+
+    def setUp(self) -> None:
+        from agent_monitor import cli
+
+        self.cli = cli
+        self.root = Path(tempfile.mkdtemp(prefix="agent-monitor-setup-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        os.environ["AGENT_MONITOR_CONFIG"] = str(self.root / "config.json")
+        os.environ["AGENT_MONITOR_DATA_DIR"] = str(self.root / "data")
+        self.addCleanup(os.environ.pop, "AGENT_MONITOR_CONFIG", None)
+        self.addCleanup(os.environ.pop, "AGENT_MONITOR_DATA_DIR", None)
+
+    def _args(self, **overrides: object) -> types.SimpleNamespace:
+        values = {"url": "https://example.vercel.app", "owner_id": None, "code": None, "brand": None}
+        values.update(overrides)
+        return types.SimpleNamespace(**values)
+
+    def test_install_code_is_sent_as_its_own_header(self) -> None:
+        seen: dict[str, Any] = {}
+        self.cli._request = lambda base, path, **kwargs: seen.update(kwargs) or {
+            "owner_id": "o" * 18, "device_id": "d" * 18, "device_token": "t" * 18,
+        }
+        real_keychain_set = self.cli._keychain_set
+        self.cli._keychain_set = lambda account, token: None
+        self.addCleanup(setattr, self.cli, "_keychain_set", real_keychain_set)
+        self.addCleanup(setattr, self.cli, "_request", self.cli._request)
+        self.cli.cmd_setup(self._args(code="012345"))
+        self.assertEqual(seen["install_code"], "012345")
+        self.assertNotIn("bootstrap", seen)
+        config = json.loads((self.root / "config.json").read_text())
+        self.assertEqual(config["base_url"], "https://example.vercel.app")
+
+    def test_install_code_rejects_a_malformed_code_and_an_owner_id(self) -> None:
+        self.cli._request = lambda *args, **kwargs: self.fail("no request may be made")
+        self.addCleanup(setattr, self.cli, "_request", self.cli._request)
+        with self.assertRaises(SystemExit):
+            self.cli.cmd_setup(self._args(code="12ab"))
+        with self.assertRaises(SystemExit):
+            self.cli.cmd_setup(self._args(code="012345", owner_id="o" * 18))
+
+
 class InstallerScriptTests(unittest.TestCase):
     """The one-command installer is published with a release, so it must match that release."""
 
@@ -632,9 +685,70 @@ class InstallerScriptTests(unittest.TestCase):
         self.assertEqual(helped.returncode, 0, helped.stderr)
         self.assertIn("--url", helped.stdout)
         self.assertIn("--wheel", helped.stdout)
+        self.assertIn("--code", helped.stdout)
         refused = subprocess.run(["/bin/sh", str(self.script), "--not-a-flag"], capture_output=True, text=True)
         self.assertNotEqual(refused.returncode, 0)
         self.assertIn("unknown option", refused.stderr)
+
+
+class InstallCodeTests(BridgeHarness):
+    """The phone hands a new Mac a one-time code so nobody copies the bootstrap secret."""
+
+    def _install_code(self, phone: dict[str, str]) -> str:
+        response = self.client.post("/v1/install-codes", headers=phone, json={})
+        self.assertEqual(response.status_code, 200, response.text)
+        code = response.json()["code"]
+        self.assertRegex(code, r"^[0-9]{6}$")
+        return code
+
+    def _setup_with_code(self, code: str, **overrides: object):
+        body: dict[str, object] = {"device_name": "Mac 2"}
+        body.update(overrides)
+        return self.client.post("/v1/setup", headers={"x-monitor-install-code": code}, json=body)
+
+    def test_install_code_registers_another_mac_under_the_same_owner(self) -> None:
+        setup, _, phone = self._pair()
+        code = self._install_code(phone)
+        response = self._setup_with_code(code)
+        self.assertEqual(response.status_code, 200, response.text)
+        second = response.json()
+        self.assertEqual(second["owner_id"], setup["owner_id"], "a code joins the existing owner, it cannot create one")
+        mac2 = {"Authorization": "Bearer " + second["device_token"]}
+        self.assertEqual(self.client.post("/v1/heartbeat", headers=mac2, json={}).status_code, 200)
+        devices = self.client.get("/v1/snapshot", headers=phone).json()["devices"]
+        self.assertIn(second["device_id"], [item["device_id"] for item in devices])
+
+    def test_install_code_is_single_use(self) -> None:
+        _, _, phone = self._pair()
+        code = self._install_code(phone)
+        self.assertEqual(self._setup_with_code(code).status_code, 200)
+        self.assertEqual(self._setup_with_code(code).status_code, 410)
+
+    def test_install_codes_need_a_phone_and_a_six_digit_code(self) -> None:
+        _, mac, phone = self._pair()
+        self.assertEqual(self.client.post("/v1/install-codes", json={}).status_code, 401)
+        self.assertEqual(self.client.post("/v1/install-codes", headers=mac, json={}).status_code, 403)
+        self.assertEqual(self._setup_with_code("12345").status_code, 401)
+        self.assertEqual(self._setup_with_code("abcdef").status_code, 401)
+        self.assertEqual(self._setup_with_code("000000").status_code, 410)
+        self.assertEqual(self.client.post("/v1/install-codes", headers=phone, json={}).status_code, 200)
+
+    def test_repeated_wrong_codes_are_rate_limited(self) -> None:
+        _, _, phone = self._pair()
+        self._install_code(phone)
+        responses = [self._setup_with_code(f"{index:06d}") for index in range(1, 31)]
+        self.assertIn(429, [item.status_code for item in responses],
+                      "a six-digit code must not be brute-forceable")
+        self.assertEqual(responses[0].status_code, 410)
+
+    def test_bootstrap_registration_still_works(self) -> None:
+        response = self.client.post(
+            "/v1/setup", headers={"x-monitor-bootstrap": BOOTSTRAP}, json={"device_name": "Mac"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.post(
+            "/v1/setup", headers={"x-monitor-bootstrap": "wrong"}, json={"device_name": "Mac"}
+        ).status_code, 401)
 
 
 if __name__ == "__main__":

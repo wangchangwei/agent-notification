@@ -16,13 +16,15 @@ import httpx
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-app = FastAPI(title="Agent Monitor Bridge", version="0.1.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="Agent Monitor Bridge", version="0.1.2", docs_url=None, redoc_url=None)
 HISTORY_DAYS = 7
 HISTORY_LIMIT = 3000
 HEARTBEAT_TTL = 120
+INSTALL_CODE_TTL = 600
+INSTALL_CODE_LIMIT = 20
 
 
 class StrictModel(BaseModel):
@@ -245,22 +247,83 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "agent-monitor-bridge"}
 
 
+def _install_code_key(code: str) -> str:
+    return f"install:{hashlib.sha256(code.encode('utf-8')).hexdigest()}"
+
+
+def _install_attempts_key(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    address = forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    return f"install-attempts:{hashlib.sha256(address.encode('utf-8')).hexdigest()[:32]}"
+
+
+def _limit_install_attempts(request: Request) -> str:
+    """A six-digit code is short enough to guess, so bound tries per source address."""
+    key = _install_attempts_key(request)
+    values = _redis_pipeline([["INCR", key], ["EXPIRE", key, 3600]])
+    attempts = values[0]
+    if isinstance(attempts, int) and attempts > INSTALL_CODE_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many install-code attempts; wait an hour")
+    return key
+
+
+def _redeem_install_code(code: str) -> str:
+    values = _redis_pipeline([["GETDEL", _install_code_key(code)]])
+    stored = values[0]
+    try:
+        owner_id = json.loads(stored)["owner_id"]
+    except (TypeError, ValueError, KeyError):
+        raise HTTPException(status_code=410, detail="Install code is expired or already used") from None
+    if not isinstance(owner_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", owner_id):
+        raise HTTPException(status_code=410, detail="Install code is expired or already used")
+    return owner_id
+
+
+@app.post("/v1/install-codes")
+def create_install_code(context: dict[str, str] = Depends(_auth_context)) -> dict[str, object]:
+    """A paired phone issues a short-lived code so another Mac can join without the bootstrap secret."""
+    _require_kind(context, "phone")
+    for _ in range(6):
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        values = _redis_pipeline([
+            ["SET", _install_code_key(code), json.dumps({"owner_id": context["owner_id"]}),
+             "EX", INSTALL_CODE_TTL, "NX"],
+        ])
+        if values[0] == "OK":
+            return {"code": code, "expires_in_seconds": INSTALL_CODE_TTL}
+    raise HTTPException(status_code=503, detail="Could not issue an install code")
+
+
 @app.post("/v1/setup")
-def setup(request: SetupRequest, x_monitor_bootstrap: str | None = Header(default=None)) -> dict[str, str]:
-    expected = os.getenv("MONITOR_BOOTSTRAP_TOKEN", "")
-    if not expected or not x_monitor_bootstrap or not hmac.compare_digest(expected, x_monitor_bootstrap):
+def setup(request_body: SetupRequest, request: Request,
+          x_monitor_bootstrap: str | None = Header(default=None),
+          x_monitor_install_code: str | None = Header(default=None)) -> dict[str, str]:
+    attempts_key = ""
+    if x_monitor_install_code:
+        code = x_monitor_install_code.strip()
+        if not re.fullmatch(r"[0-9]{6}", code):
+            raise HTTPException(status_code=401, detail="Invalid install code")
+        attempts_key = _limit_install_attempts(request)
+        owner_id = _redeem_install_code(code)
+    elif x_monitor_bootstrap:
+        expected = os.getenv("MONITOR_BOOTSTRAP_TOKEN", "")
+        if not expected or not hmac.compare_digest(expected, x_monitor_bootstrap):
+            raise HTTPException(status_code=401, detail="Invalid bootstrap credential")
+        owner_id = request_body.owner_id or secrets.token_urlsafe(18)
+    else:
         raise HTTPException(status_code=401, detail="Invalid bootstrap credential")
-    owner_id = request.owner_id or secrets.token_urlsafe(18)
     device_id = str(uuid.uuid4())
     device_token = secrets.token_urlsafe(36)
     token_hash = hashlib.sha256(device_token.encode()).hexdigest()
     values = _redis_pipeline([
         ["SET", f"auth:{token_hash}", json.dumps({"kind": "mac", "owner_id": owner_id, "device_id": device_id})],
         ["SADD", f"owner:{owner_id}:devices", device_id],
-        ["SET", f"device:{device_id}", json.dumps({"device_id": device_id, "device_name": request.device_name, "owner_id": owner_id, "token_hash": token_hash})],
+        ["SET", f"device:{device_id}", json.dumps({"device_id": device_id, "device_name": request_body.device_name, "owner_id": owner_id, "token_hash": token_hash})],
     ])
     if values[0] != "OK":
         raise HTTPException(status_code=503, detail="Could not provision device")
+    if attempts_key:
+        _redis_pipeline([["DEL", attempts_key]])
     return {"owner_id": owner_id, "device_id": device_id, "device_token": device_token}
 
 

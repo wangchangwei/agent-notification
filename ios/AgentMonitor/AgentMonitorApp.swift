@@ -131,6 +131,11 @@ import UserNotifications
         catch { self.error = error.localizedDescription }
     }
 
+    /// A paired phone hands the next Mac a short-lived code, so nobody has to copy the bootstrap secret.
+    func createInstallCode() async throws -> InstallCode {
+        try await authorized("/v1/install-codes", method: "POST")
+    }
+
     func rename(_ device: MonitorDevice, to name: String) async {
         let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
         let fallback = trimmed.isEmpty ? "Mac" : trimmed
@@ -263,6 +268,7 @@ private enum Keychain {
 
 private struct PairRequest: Encodable { let code: String }
 private struct PairResponse: Decodable { let ownerId: String; let accessToken: String }
+struct InstallCode: Decodable { let code: String; let expiresInSeconds: Int? }
 private struct PushRequest: Encodable { let token: String }
 private struct RenameRequest: Encodable { let deviceName: String }
 private struct RenameAck: Decodable { let deviceId: String?; let deviceName: String? }

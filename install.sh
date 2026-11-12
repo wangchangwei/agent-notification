@@ -20,7 +20,7 @@ if [ -z "${HOME:-}" ]; then
 fi
 
 REPO="wangchangwei/agent-notification"
-VERSION="0.1.1"
+VERSION="0.1.2"
 APP_SUPPORT="$HOME/Library/Application Support/Agent Monitor"
 DEFAULT_VENV="$APP_SUPPORT/.venv"
 BIN_DIR="$HOME/.local/bin"
@@ -41,6 +41,8 @@ Usage: install.sh [options]
 
   --url URL          Bridge URL. When given, this Mac is registered during the
                      install (the bootstrap token is prompted for, not echoed).
+  --code CODE        Six-digit install code from Agent Monitor on the iPhone (Add a
+                     computer). Registers without asking for the bootstrap token.
   --owner-id ID      Owner ID printed by setup on another Mac, for a second Mac.
   --brand NAME       Agent brand shown on the phone: hermes (default), codex, pi.
   --plugin           Also install and enable the read-only Hermes observer plugin.
@@ -58,6 +60,7 @@ EOF
 }
 
 URL=""
+CODE=""
 OWNER_ID=""
 BRAND=""
 DO_PLUGIN=0
@@ -73,6 +76,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --url) need_value "$@"; URL="$2"; shift 2 ;;
     --url=*) URL="${1#*=}"; shift ;;
+    --code) need_value "$@"; CODE="$2"; shift 2 ;;
+    --code=*) CODE="${1#*=}"; shift ;;
     --owner-id) need_value "$@"; OWNER_ID="$2"; shift 2 ;;
     --owner-id=*) OWNER_ID="${1#*=}"; shift ;;
     --brand) need_value "$@"; BRAND="$2"; shift 2 ;;
@@ -260,17 +265,18 @@ if [ -n "$URL" ]; then
     say "This Mac is already registered; leaving $CONFIG alone."
     say "To register it again, run: agent-monitor setup --url $URL"
     CONFIGURED=1
-  elif have_tty; then
+  elif [ -n "$CODE" ] || have_tty; then
     say ""
     say "Registering this Mac with $URL"
-    if [ -n "$OWNER_ID" ] && [ -n "$BRAND" ]; then
-      "$CLI" setup --url "$URL" --owner-id "$OWNER_ID" --brand "$BRAND" </dev/tty
-    elif [ -n "$OWNER_ID" ]; then
-      "$CLI" setup --url "$URL" --owner-id "$OWNER_ID" </dev/tty
-    elif [ -n "$BRAND" ]; then
-      "$CLI" setup --url "$URL" --brand "$BRAND" </dev/tty
+    set -- setup --url "$URL"
+    if [ -n "$CODE" ]; then set -- "$@" --code "$CODE"; fi
+    if [ -n "$OWNER_ID" ]; then set -- "$@" --owner-id "$OWNER_ID"; fi
+    if [ -n "$BRAND" ]; then set -- "$@" --brand "$BRAND"; fi
+    if [ -n "$CODE" ]; then
+      # An install code carries the owner, so setup never prompts.
+      "$CLI" "$@"
     else
-      "$CLI" setup --url "$URL" </dev/tty
+      "$CLI" "$@" </dev/tty
     fi
     CONFIGURED=1
   else
@@ -292,6 +298,8 @@ say ""
 if [ "$CONFIGURED" -eq 0 ]; then
   say "Next steps:"
   say "  1. Register this Mac:   agent-monitor setup --url https://your-project.vercel.app"
+  say "     or with a code from Agent Monitor (Add a computer):"
+  say "                          agent-monitor setup --url https://your-project.vercel.app --code 123456"
   say "  2. Observer plugin:     agent-monitor install-plugin && hermes plugins enable agent_monitor"
   say "  3. Pair the iPhone:     agent-monitor pair"
   say "  4. Start the probe:     agent-monitor run"

@@ -95,7 +95,8 @@ def _keychain_delete(account: str) -> None:
 
 
 def _request(base_url: str, path: str, *, method: str = "GET", body: dict[str, Any] | None = None,
-             token: str | None = None, bootstrap: str | None = None, timeout: int = 8) -> Any:
+             token: str | None = None, bootstrap: str | None = None, install_code: str | None = None,
+             timeout: int = 8) -> Any:
     headers = {"Accept": "application/json"}
     if body is not None:
         headers["Content-Type"] = "application/json"
@@ -103,6 +104,8 @@ def _request(base_url: str, path: str, *, method: str = "GET", body: dict[str, A
         headers["Authorization"] = f"Bearer {token}"
     if bootstrap:
         headers["X-Monitor-Bootstrap"] = bootstrap
+    if install_code:
+        headers["X-Monitor-Install-Code"] = install_code
     data = json.dumps(body).encode("utf-8") if body is not None else None
     request = urllib.request.Request(base_url.rstrip("/") + path, data=data, headers=headers, method=method)
     try:
@@ -112,6 +115,10 @@ def _request(base_url: str, path: str, *, method: str = "GET", body: dict[str, A
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
             raise RuntimeError("The service rejected the credential") from None
+        if exc.code == 410:
+            raise RuntimeError("That install code expired or was already used") from None
+        if exc.code == 429:
+            raise RuntimeError("Too many install-code attempts for this network; wait an hour") from None
         if exc.code in (413, 422):
             raise RuntimeError("The service rejected this request") from None
         raise RuntimeError(f"Bridge request failed (HTTP {exc.code})") from None
@@ -148,10 +155,18 @@ def _brand(value: Any) -> str:
 
 def cmd_setup(args: Any) -> None:
     base_url = _base_url(args.url or input("Vercel bridge URL: "))
-    bootstrap = getpass.getpass("Bootstrap token: ")
+    code = (getattr(args, "code", None) or "").strip().replace(" ", "").replace("-", "")
     owner_id = args.owner_id or None
     brand = _brand(getattr(args, "brand", None))
-    result = _request(base_url, "/v1/setup", method="POST", body={"owner_id": owner_id, "device_name": "Mac"}, bootstrap=bootstrap)
+    if code:
+        if owner_id:
+            raise SystemExit("Use either --code or --owner-id: an install code already belongs to an owner.")
+        if not re.fullmatch(r"[0-9]{6}", code):
+            raise SystemExit("An install code is six digits, as shown in Agent Monitor on the iPhone.")
+        result = _request(base_url, "/v1/setup", method="POST", body={"device_name": "Mac"}, install_code=code)
+    else:
+        bootstrap = getpass.getpass("Bootstrap token: ")
+        result = _request(base_url, "/v1/setup", method="POST", body={"owner_id": owner_id, "device_name": "Mac"}, bootstrap=bootstrap)
     config = {"base_url": base_url, "owner_id": result["owner_id"], "device_id": result["device_id"], "heartbeat_seconds": 30, "brand": brand}
     try:
         _keychain_set(config["device_id"], result["device_token"])
@@ -415,6 +430,7 @@ def main() -> None:
     setup = subparsers.add_parser("setup", help="Register this Mac with the bridge")
     setup.add_argument("--url")
     setup.add_argument("--owner-id", help="Use the owner ID printed by setup on another Mac")
+    setup.add_argument("--code", help="Six-digit install code from Agent Monitor on the iPhone, instead of the bootstrap token")
     setup.add_argument("--brand", help="Agent brand shown on the phone: hermes, codex, pi, or any short slug")
     setup.set_defaults(func=cmd_setup)
     for name, help_text, function in (

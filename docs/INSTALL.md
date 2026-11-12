@@ -1,24 +1,27 @@
-# Agent Monitor macOS probe v0.1.1
+# Agent Monitor macOS probe v0.1.2
 
 Requirements: macOS, Python 3.11 or newer, Hermes Agent, and your own Agent Monitor HTTPS bridge. This release ships the Python probe, not a standalone macOS application.
 
 ## Install with one command
 
-In a terminal:
+On the iPhone, open **Agent Monitor → Computers → Add a computer**. The app issues a six-digit code, single use and valid for ten minutes, and shows the exact command. Paste that command into Terminal on the Mac you want to add:
 
 ```sh
 curl -fsSL https://github.com/wangchangwei/agent-notification/releases/latest/download/install.sh \
-  | sh -s -- --url https://your-project.vercel.app
+  | sh -s -- --url https://your-project.vercel.app --code 123456
 ```
 
-The script checks for Python 3.11 or newer, creates the virtual environment at `$HOME/Library/Application Support/Agent Monitor/.venv`, installs `agent-notification[qrcode]` into it, verifies the wheel against `SHA256SUMS`, links `agent-monitor` into `~/.local/bin`, and then registers this Mac with your bridge. The bootstrap token is prompted for without echoing it and the device credential is stored in the macOS Keychain.
+Nothing is typed by hand and no bootstrap token travels between machines: the code already belongs to your account, so the new Mac joins the same owner as the phone.
+
+The script checks for Python 3.11 or newer, creates the virtual environment at `$HOME/Library/Application Support/Agent Monitor/.venv`, installs `agent-notification` into it, verifies the wheel against `SHA256SUMS`, links `agent-monitor` into `~/.local/bin`, and registers this Mac. The device credential is stored in the macOS Keychain.
 
 Flags:
 
 | Flag | Effect |
 | --- | --- |
-| `--url URL` | Register this Mac during the install |
-| `--owner-id ID` | Add a second Mac to the owner ID printed by the first setup |
+| `--url URL` | Bridge URL; with `--code` the Mac registers during the install |
+| `--code CODE` | Six-digit code from the phone; replaces the bootstrap token |
+| `--owner-id ID` | Owner ID printed by the first setup, for a Mac that has no phone code |
 | `--brand NAME` | Agent brand shown on the phone: `hermes` (default), `codex`, `pi` |
 | `--plugin` | Also install and enable the read-only Hermes observer plugin |
 | `--service` | Also write the opt-in login service (not loaded) |
@@ -28,6 +31,17 @@ Flags:
 | `--force` | Reinstall even when the same version is present |
 
 Re-running the command upgrades in place. It never overwrites an existing registration: remove `$HOME/Library/Application Support/Agent Monitor/config.json`, or run `agent-monitor setup` again, to register the Mac anew.
+
+## The first Mac, before any phone is paired
+
+There is no phone to issue a code yet, so the first Mac uses the bridge's bootstrap token. `setup` prompts for it without echoing it:
+
+```sh
+curl -fsSL https://github.com/wangchangwei/agent-notification/releases/latest/download/install.sh \
+  | sh -s -- --url https://your-project.vercel.app
+```
+
+Pair the phone once from that Mac, and use **Add a computer** for every later Mac.
 
 ## Finish the setup
 
@@ -42,13 +56,6 @@ Skip the first two lines if you installed with `--plugin`. If `~/.local/bin` is 
 
 Scan the short-lived pairing QR in the iPhone app. After enabling the plugin, restart the Hermes desktop app — or run `hermes gateway restart` — so turn-start and turn-end events are wired up. `run` syncs in the foreground; stop it with Ctrl-C.
 
-For a second Mac under the same owner, pass the owner ID printed by the first setup:
-
-```sh
-curl -fsSL https://github.com/wangchangwei/agent-notification/releases/latest/download/install.sh \
-  | sh -s -- --url https://your-project.vercel.app --owner-id YOUR_OWNER_ID
-```
-
 ## Install from the wheel instead
 
 Cloning the repository is optional. If you prefer to control each step, or the machine has no network access to the release script:
@@ -56,9 +63,9 @@ Cloning the repository is optional. If you prefer to control each step, or the m
 ```sh
 python3 --version
 python3 -m venv "$HOME/Library/Application Support/Agent Monitor/.venv"
-"$HOME/Library/Application Support/Agent Monitor/.venv/bin/python" -m pip install 'agent_notification-0.1.1-py3-none-any.whl[qrcode]'
+"$HOME/Library/Application Support/Agent Monitor/.venv/bin/python" -m pip install 'agent_notification-0.1.2-py3-none-any.whl'
 . "$HOME/Library/Application Support/Agent Monitor/.venv/bin/activate"
-agent-monitor setup --url https://your-project.vercel.app
+agent-monitor setup --url https://your-project.vercel.app --code 123456
 ```
 
 ## Optional commands

@@ -40,9 +40,9 @@ A phone can be bound to several Macs, and each Mac is listed separately with its
 
 ## Screenshots
 
-| Pairing | Dashboard | Home screen | Watch icon |
-| --- | --- | --- | --- |
-| ![Pairing](docs/screenshots/pairing.png) | ![Dashboard](docs/screenshots/dashboard.png) | ![Home screen](docs/screenshots/home-screen.png) | ![Watch icon](docs/screenshots/watch-icon.png) |
+| Pairing | Dashboard | Add a computer | Home screen | Watch icon |
+| --- | --- | --- | --- | --- |
+| ![Pairing](docs/screenshots/pairing.png) | ![Dashboard](docs/screenshots/dashboard.png) | ![Add a computer](docs/screenshots/add-computer.png) | ![Home screen](docs/screenshots/home-screen.png) | ![Watch icon](docs/screenshots/watch-icon.png) |
 
 ## Local development
 
@@ -86,14 +86,25 @@ Vercel's Hobby plan is limited to personal, non-commercial use, and Vercel or Up
 
 ## Set up each Mac
 
-One command installs the probe into its own virtual environment under Application Support, verifies the wheel against the release checksums, links `agent-monitor` into `~/.local/bin` and registers this Mac:
+Open **Agent Monitor → Computers → Add a computer** on the iPhone. The app issues a six-digit code (single use, ten minutes) and shows the exact command; copy it, run it in Terminal on the Mac you want to add:
+
+```sh
+curl -fsSL https://github.com/wangchangwei/agent-notification/releases/latest/download/install.sh \
+  | sh -s -- --url https://your-project.vercel.app --code 123456
+```
+
+Nothing else is needed: the code carries the owner, so no bootstrap token is copied between machines. The installer picks a Python 3.11 or newer, verifies the wheel against the release checksums, installs the probe into `~/Library/Application Support/Agent Monitor/.venv`, links `agent-monitor` into `~/.local/bin` and registers the Mac under the same owner as the phone.
+
+Running the same command again upgrades in place and leaves an existing registration alone; add `--force` to reinstall anyway. `--plugin` also installs and enables the observer plugin, `--brand` sets the agent shown on the phone, and `--help` lists every flag.
+
+The first Mac, before any phone is paired, registers with the bridge's bootstrap token instead:
 
 ```sh
 curl -fsSL https://github.com/wangchangwei/agent-notification/releases/latest/download/install.sh \
   | sh -s -- --url https://your-project.vercel.app
 ```
 
-`setup` prompts for the bootstrap token without echoing it and stores the device credential in the macOS Keychain. Running the same command again upgrades in place and leaves an existing registration alone; add `--force` to reinstall anyway. `--owner-id ID` puts a second Mac under the same owner, `--plugin` also installs and enables the observer plugin, and `--help` lists every flag. Then install and enable the plugin for the active Hermes profile, if you did not pass `--plugin`, and start the probe:
+Then install and enable the plugin for the active Hermes profile, if you did not pass `--plugin`, and start the probe:
 
 ```sh
 agent-monitor install-plugin
