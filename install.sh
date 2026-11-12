@@ -138,6 +138,17 @@ WORK="$(mktemp -d "${TMP_ROOT%/}/agent-monitor-install.XXXXXX")"
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT INT TERM HUP
 
+# pip's progress bars and cache warnings are noise in a one-line install; show its
+# output only when something actually fails.
+pip_install() {
+  if "$VENV_PYTHON" -m pip install --quiet --upgrade --disable-pip-version-check "$@" \
+       </dev/null >"$WORK/pip.log" 2>&1; then
+    return 0
+  fi
+  cat "$WORK/pip.log" >&2
+  return 1
+}
+
 verify_wheel() {
   wheel_path="$1"
   wheel_name="$2"
@@ -206,14 +217,11 @@ else
     "$VENV_PYTHON" -m pip uninstall -y -q agent-notification </dev/null >/dev/null 2>&1 || true
   fi
   say "Installing into $VENV (this may take a minute)."
-  "$VENV_PYTHON" -m pip install --quiet --upgrade --disable-pip-version-check \
-    "$WHEEL_PATH" </dev/null \
-    || die "pip install failed; run '$VENV_PYTHON -m pip install \"$WHEEL_PATH\"' to see why"
+  pip_install "$WHEEL_PATH" \
+    || die "pip install failed (see above); run '$VENV_PYTHON -m pip install \"$WHEEL_PATH\"' for the full log"
   # The QR is a convenience for `pair`; a failure here must not block the probe.
-  if ! "$VENV_PYTHON" -m pip install --quiet --upgrade --disable-pip-version-check \
-         'qrcode[pil]>=8,<9' </dev/null; then
-    warn "terminal QR support is not installed; 'agent-monitor pair' will print the pairing link instead"
-  fi
+  pip_install 'qrcode[pil]>=8,<9' \
+    || warn "terminal QR support is not installed; 'agent-monitor pair' will print the pairing link instead"
 fi
 
 CLI="$VENV/bin/agent-monitor"
