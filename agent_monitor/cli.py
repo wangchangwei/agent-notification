@@ -46,12 +46,16 @@ def _write_config(config: dict[str, Any]) -> None:
 def _keychain_set(account: str, token: str) -> None:
     # `security` echoes this prompt twice when stdin is not a terminal (password + retype);
     # feeding it a single line stores an empty secret while still exiting 0, so read it back.
+    # It also prefers /dev/tty over the piped secret whenever a controlling terminal exists,
+    # which hangs setup when it is run from Terminal.app — `start_new_session` removes
+    # that terminal so the piped value is what gets stored.
     result = subprocess.run(
         ["/usr/bin/security", "add-generic-password", "-U", "-s", KEYCHAIN_SERVICE, "-a", account, "-w"],
         input=f"{token}\n{token}\n",
         capture_output=True,
         text=True,
         check=False,
+        start_new_session=True,
     )
     stored = subprocess.run(
         ["/usr/bin/security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", account, "-w"],

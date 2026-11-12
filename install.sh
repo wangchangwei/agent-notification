@@ -29,6 +29,10 @@ say() { printf '%s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 die() { printf 'agent-monitor install: %s\n' "$*" >&2; exit 1; }
 
+# `-r /dev/tty` is true even where opening it fails ("Device not configured"),
+# so prove the terminal can actually be opened before redirecting prompts to it.
+have_tty() { ( : </dev/tty ) 2>/dev/null; }
+
 usage() {
   cat <<'EOF'
 Install the Agent Monitor macOS probe (one command).
@@ -202,11 +206,13 @@ else
     "$VENV_PYTHON" -m pip uninstall -y -q agent-notification </dev/null >/dev/null 2>&1 || true
   fi
   say "Installing into $VENV (this may take a minute)."
+  "$VENV_PYTHON" -m pip install --quiet --upgrade --disable-pip-version-check \
+    "$WHEEL_PATH" </dev/null \
+    || die "pip install failed; run '$VENV_PYTHON -m pip install \"$WHEEL_PATH\"' to see why"
+  # The QR is a convenience for `pair`; a failure here must not block the probe.
   if ! "$VENV_PYTHON" -m pip install --quiet --upgrade --disable-pip-version-check \
-         "${WHEEL_PATH}[qrcode]" </dev/null; then
-    warn "the optional QR package could not be installed; continuing without it"
-    "$VENV_PYTHON" -m pip install --quiet --upgrade --disable-pip-version-check \
-      "$WHEEL_PATH" </dev/null || die "pip install failed; run '$VENV_PYTHON -m pip install \"$WHEEL_PATH\"' to see why"
+         'qrcode[pil]>=8,<9' </dev/null; then
+    warn "terminal QR support is not installed; 'agent-monitor pair' will print the pairing link instead"
   fi
 fi
 
@@ -246,7 +252,7 @@ if [ -n "$URL" ]; then
     say "This Mac is already registered; leaving $CONFIG alone."
     say "To register it again, run: agent-monitor setup --url $URL"
     CONFIGURED=1
-  elif [ -r /dev/tty ]; then
+  elif have_tty; then
     say ""
     say "Registering this Mac with $URL"
     if [ -n "$OWNER_ID" ] && [ -n "$BRAND" ]; then

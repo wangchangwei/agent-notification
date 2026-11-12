@@ -522,11 +522,15 @@ class CliTests(unittest.TestCase):
         # `security` asks for the password twice on a pipe; a single line stores an empty value
         # while still exiting 0, so the helper must read the secret back before trusting it.
         store: dict[str, str] = {}
+        seen_sessions: list[object] = []
         real_run = self.cli.subprocess.run
 
         def fake_run(command, **kwargs):
             words = list(command)
             if "add-generic-password" in words:
+                # Without a detached session, `security` prompts on /dev/tty and ignores the
+                # piped secret, which hangs setup when it runs in a terminal.
+                seen_sessions.append(kwargs.get("start_new_session"))
                 fed = (kwargs.get("input") or "").split("\n")
                 account = words[words.index("-a") + 1]
                 # Mimic the real binary: it only accepts two matching lines.
@@ -546,6 +550,7 @@ class CliTests(unittest.TestCase):
 
         self.cli._keychain_set("device-1", "secret-token")
         self.assertEqual(store["device-1"], "secret-token")
+        self.assertEqual(seen_sessions, [True], "security must run without a controlling terminal")
 
         def broken_run(command, **kwargs):
             result = fake_run(command, **kwargs)
