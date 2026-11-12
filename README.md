@@ -140,6 +140,15 @@ The probe keeps at most 4,000 recent events for seven days locally and retains u
 
 Open `ios/AgentMonitor.xcodeproj`, choose an iOS Simulator destination, and build `AgentMonitor`. Debug and simulator builds use the development APNs entitlement; Release uses the production one. For a real iPhone, set your development team and bundle identifier, enable Push Notifications for the matching App ID, and keep the bridge's `APNS_TOPIC` and `APNS_USE_SANDBOX` in step with how the app was signed.
 
+From the command line, build by scheme and destination so each target resolves its own SDK:
+
+```sh
+xcodebuild -project ios/AgentMonitor.xcodeproj -scheme AgentMonitor \
+  -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+```
+
+Do not add `-sdk` to that command: it applies to every target, so the embedded watch app is compiled against the iOS SDK and fails in the watch asset catalog and `WCSessionDelegate`. Use `-sdk watchsimulator` only for `-target AgentMonitorWatch` on its own.
+
 The app keeps its access token in the Keychain. Pairing happens through the in-app camera scanner or by typing the one-time code. When a task moves from running or waiting to finished while the app is open, it plays one system sound and haptic; that is silent in the background and can be turned off in the app's settings.
 
 ## Build the watch app
